@@ -1,5 +1,5 @@
 import numpy as np
-from aircraft_iden.czt import zoomfft
+from AircraftIden.czt import zoomfft
 import math
 
 

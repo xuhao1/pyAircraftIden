@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 from scipy.interpolate import interp1d
 import math
 from scipy import signal
-from aircraft_iden.SpectrumAnalyse import MultiSignalSpectrum
+from AircraftIden.SpectrumAnalyse import MultiSignalSpectrum
 
 
 def remove_seq_average_and_drift(x_seq):
@@ -14,8 +14,11 @@ def remove_seq_average_and_drift(x_seq):
     return x_seq
 
 
-def time_seq_resample(time_seq, filter_omg, *x_seqs, remove_drift_and_avg=True):
-    tnew = np.linspace(time_seq[0], time_seq[-1], num=len(time_seq), endpoint=True)
+def time_seq_preprocess(time_seq, filter_omg, *x_seqs, enable_resample = True, remove_drift_and_avg=True):
+    tnew = time_seq
+    if enable_resample:
+        tnew = np.linspace(time_seq[0], time_seq[-1], num=len(time_seq), endpoint=True)
+
     sample_rate = len(time_seq) / (time_seq[-1] - time_seq[0])
     print("Sample rate is {0}".format(sample_rate))
     resampled_datas = [tnew]
@@ -27,19 +30,20 @@ def time_seq_resample(time_seq, filter_omg, *x_seqs, remove_drift_and_avg=True):
         assert len(x_seq) == len(tnew), "Length of data seq must be euqal to time seq"
         if remove_drift_and_avg:
             x_seq = remove_seq_average_and_drift(x_seq)
-
-        inte_func = interp1d(time_seq, x_seq)
-        data = inte_func(tnew)
-        # zi = signal.lfilter_zi(b, a)
-        # z, _ = signal.lfilter(b, a, data, zi=zi * data[0])
+        data = x_seq
+        if enable_resample:
+            inte_func = interp1d(time_seq, x_seq)
+            data = inte_func(tnew)
+            # zi = signal.lfilter_zi(b, a)
+            # z, _ = signal.lfilter(b, a, data, zi=zi * data[0])
         resampled_datas.append(data)
     return tuple(resampled_datas)
 
 
 class FreqIdenSIMO:
-    def __init__(self, time_seq, omg_min, omg_max, x_seq, *y_seqs, win_num=16):
-        self.time_seq, self.x_seq = time_seq_resample(time_seq, omg_max * 5, x_seq, remove_drift_and_avg=True)
-        _, *y_seqs = time_seq_resample(time_seq, omg_max * 5, *y_seqs, remove_drift_and_avg=True)
+    def __init__(self, time_seq, omg_min, omg_max, x_seq, *y_seqs, win_num=16,uniform_input = False):
+        self.time_seq, self.x_seq = time_seq_preprocess(time_seq, omg_max * 5, x_seq, remove_drift_and_avg=True, enable_resample=not(uniform_input))
+        _, *y_seqs = time_seq_preprocess(time_seq, omg_max * 5, *y_seqs, remove_drift_and_avg=True, enable_resample=not(uniform_input))
         self.y_seqs = list(y_seqs)
 
         self.time_len = self.time_seq[-1] - self.time_seq[0]
@@ -60,6 +64,35 @@ class FreqIdenSIMO:
         gamma2 = FreqIdenSIMO.get_gamma_sqr(gxx, gxy, gyy)
         return freq, H, gamma2, gxx, gxy, gyy
 
+    def plt_bode_plot(self,index):
+        #f, ax = plt.subplots()
+
+        freq, H, gamma2, gxx, gxy, gyy = self.get_freq_iden(index)
+        h_amp, h_phase = FreqIdenSIMO.get_amp_pha_from_h(H)
+
+        plt.subplot(411)
+        plt.grid(which='both')
+        plt.semilogx(freq, 20 * np.log10(gxx), freq, 20 * np.log10(gyy), freq, 20 * np.log10(np.absolute(gxy)))
+        # plt.semilogx(freq, 10 * np.log10(gxx), freq, 10 * np.log10(gyy))
+        plt.title("Gxx & Gyy Tilde of ele and theta")
+
+
+        plt.subplot(412)
+        plt.semilogx(freq, h_amp)
+        plt.title("H Amp")
+        plt.grid(which='both')
+        plt.subplot(413)
+        plt.semilogx(freq, h_phase)
+        plt.title("H Phase")
+        plt.grid(which='both')
+
+        plt.subplot(414)
+        plt.semilogx(freq, gamma2)
+        plt.title("gamma2")
+        plt.grid(which='both')
+
+        plt.show()
+        pass
     @staticmethod
     def get_h_from_gxy_gxx(Gxy_tilde, Gxx_tilde):
         H = Gxy_tilde / Gxx_tilde
@@ -72,7 +105,13 @@ class FreqIdenSIMO:
 
     @staticmethod
     def get_amp_pha_from_h(H):
-        return 20 * np.log10(np.absolute(H)), np.arctan2(H.imag, H.real) * 180 / math.pi
+        amp,pha = 20 * np.log10(np.absolute(H)), np.arctan2(H.imag, H.real) * 180 / math.pi
+        def pha_postprocess(pha):
+            if pha>90:
+                return pha -360
+            return pha
+        pha_post = np.vectorize(pha_postprocess)
+        return amp,pha_post(pha)
 
     @staticmethod
     def get_gamma_sqr(gxx, gxy, gyy):
@@ -84,7 +123,7 @@ if __name__ == "__main__":
     time_seq_source = arr[:, 0]
     ele_seq_source = arr[:, 1]
     q_seq_source = arr[:, 4]
-    simo_iden = FreqIdenSIMO(time_seq_source,0.1, 100, ele_seq_source, q_seq_source, win_num=32)
+    simo_iden = FreqIdenSIMO(time_seq_source,0.1, 100, ele_seq_source, q_seq_source, win_num=64)
     freq, H, gamma2, gxx, gxy, gyy = simo_iden.get_freq_iden(0)
     h_amp, h_phase = FreqIdenSIMO.get_amp_pha_from_h(H)
 

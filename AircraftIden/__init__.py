@@ -1,1 +1,1 @@
-import aircraft_iden.test_processs as test_process
+from AircraftIden.FreqIden import FreqIdenSIMO
