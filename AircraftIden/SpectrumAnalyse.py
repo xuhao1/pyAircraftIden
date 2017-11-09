@@ -66,7 +66,7 @@ class MultiSignalSpectrum:
         # Using Hanning window
         winnum = self.win_num
         datas = self.x_seqs
-        per_win_length = 2 * (len(datas[0]) // (winnum + 1))
+        per_win_length = 2 * (len(datas[0]) // (winnum))
         delta_win = per_win_length // 2
         print("len {0} perwinlen {1} delta {2} use data{3}".format(len(datas[0]), per_win_length, delta_win,
                                                                    delta_win * (winnum + 1)))
@@ -90,16 +90,23 @@ class MultiSignalSpectrum:
 
     @staticmethod
     def cut_data_seq_to_windows(winnum, delta, perwinlen, data):
-        assert winnum * delta < len(data), "no enought data"
+        #assert winnum * delta < len(data), "no enought data"
         windows = []
         for i in range(winnum):
-            win_data = data[i * delta:i * delta + perwinlen]
-            # print("num {} start ptr {} end {} to {}".format(i, i * delta, i * delta + perwinlen, len(win_data), len(data)))
-            for j in range(perwinlen):
-                t = 2 * math.pi * j / perwinlen
-                wt = (1 - math.cos(t)) * 0.5
-                # wt = 1
-                # print("j {} winlen {} t {} wt {}".format(j, perwinlen, t, wt))
-                win_data[j] = win_data[j] * wt
+            win_data = data[i * delta:i * delta + perwinlen].copy()
+            if i * delta + perwinlen > data.__len__():
+                add_len = i * delta + perwinlen - data.__len__()
+                add_arr = np.zeros(add_len)
+                win_data = np.concatenate([win_data,add_arr] )
+            win_data = MultiSignalSpectrum.add_hanning_window(win_data)
             windows.append(win_data)
         return windows
+
+    @staticmethod
+    def add_hanning_window(data):
+        data_len = len(data)
+        for j in range(data_len):
+            t = 2 * math.pi * j / data_len
+            wt = (1 - math.cos(t)) * 0.5
+            data[j] = data[j] * wt
+        return data

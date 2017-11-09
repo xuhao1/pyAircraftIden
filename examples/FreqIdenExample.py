@@ -7,7 +7,7 @@ def siso_freq_iden():
     time_seq_source = arr[:, 0]
     ele_seq_source = arr[:, 1]
     q_seq_source = arr[:, 4]
-    simo_iden = FreqIdenSIMO(time_seq_source,0.1, 100, ele_seq_source, q_seq_source, win_num=64)
+    simo_iden = FreqIdenSIMO(time_seq_source,0.1, 100, ele_seq_source, q_seq_source, win_num=32)
     freq, H, gamma2, gxx, gxy, gyy = simo_iden.get_freq_iden(0)
     h_amp, h_phase = FreqIdenSIMO.get_amp_pha_from_h(H)
 
