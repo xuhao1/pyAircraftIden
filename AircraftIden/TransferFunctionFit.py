@@ -18,6 +18,7 @@ def freqres(b, a, w):
 
 class TransferFunctionFit(object):
     def __init__(self, freq, H, coheren, num_ord, den_ord, nw=20):
+        #num/den
         self.num_ord = num_ord
         self.den_ord = den_ord
         self.nw = nw
@@ -67,13 +68,11 @@ class TransferFunctionFit(object):
             freq = self.source_freq[i]
             if freq > omg_list[omg_ptr]:
                 self.est_omg_ptr_list.append(i)
-                print("found omg ptr {} omg {}".format(i, omg_list[omg_ptr]))
                 omg_ptr = omg_ptr + 1
             elif omg_ptr < omg_list.__len__() and i == self.source_freq.__len__() - 1:
                 self.est_omg_ptr_list.append(i)
-                print("found omg ptr {} omg {}".format(i, omg_list[omg_ptr]))
                 omg_ptr = omg_ptr + 1
-        print("omg num {}".format(self.est_omg_ptr_list.__len__()))
+
         print("Will fit from {} rad/s to {} rad/s".format(omg_min, omg_max))
 
         def cost_func_x(x):
@@ -81,18 +80,20 @@ class TransferFunctionFit(object):
             den = x[self.num_ord:self.num_ord + self.den_ord]
             return self.cost_func(num, den)
 
-        x0 = np.zeros(self.den_ord + self.num_ord) + 1
+        x0 = np.zeros(self.den_ord + self.num_ord)
+        x0[0] = 1
+        x0[self.num_ord] = 1
 
         res = minimize(cost_func_x, x0, options={'maxiter': 10000, 'disp': False})
         x = res.x.copy() / res.x[0]
-        print("res final J {:4.1f} x {}".format(res.fun, x))
         num = x[0:self.num_ord]
         den = x[self.num_ord:self.num_ord + self.den_ord]
         self.num = num
         self.den = den
 
-        print("num {} den {}".format(num,den))
+        print("J {} num {} den {}".format(res.fun,num,den))
         self.plot()
+
         return num, den
 
     def plot(self):
@@ -125,8 +126,6 @@ class TransferFunctionFit(object):
         plt.title("gamma2")
         plt.grid(which='both')
 
-        plt.show()
-
         pass
 
 
@@ -147,6 +146,8 @@ def siso_freq_iden():
 
     fitter = TransferFunctionFit(freq, H, gamma2, 2, 4,nw=20)
     fitter.estimate()
+
+    plt.show()
 
 
 def test_freq_res():

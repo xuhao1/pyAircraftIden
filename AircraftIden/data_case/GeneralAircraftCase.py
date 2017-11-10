@@ -3,7 +3,7 @@ from pyulog.core import ULog
 import matplotlib.pyplot as plt
 from scipy.interpolate import interp1d
 
-from AircraftIden import FreqIdenSIMO
+from AircraftIden import FreqIdenSIMO,TransferFunctionFit
 from AircraftIden.FreqIden import remove_seq_average_and_drift
 import math
 
@@ -220,7 +220,6 @@ def process_lat_analyse(test_case: GeneralAircraftCase, time_ranges, win_num=32,
     simo_iden = FreqIdenSIMO(t_data, omg_min, omg_max, ele_data, r_data, roc_data, win_num=win_num,
                              assit_input=thr_data)
 
-    # simo_iden = FreqIdenSIMO(t_data, omg_min, omg_max, ele_data,r_data, roc_data, win_num=win_num)
     # plt.figure(0)
     # plt.subplot(211)
     # plt.plot(simo_iden.time_seq, simo_iden.x_seq, simo_iden.time_seq, simo_iden.y_seqs[1])
@@ -231,17 +230,20 @@ def process_lat_analyse(test_case: GeneralAircraftCase, time_ranges, win_num=32,
 
     plt.figure('Elevator ->Pitch rate')
 
-    simo_iden.plt_bode_plot(0)
+    freq, H, gamma2, gxx, gxy, gyy = simo_iden.get_freq_iden(0)
+    fitter = TransferFunctionFit(freq, H, gamma2, 2, 5)
+    fitter.estimate()
 
     plt.figure('Elevator -> rate of climb rate')
 
-    simo_iden.plt_bode_plot(1)
+    freq, H, gamma2, gxx, gxy, gyy = simo_iden.get_freq_iden(1)
+    fitter = TransferFunctionFit(freq, H, gamma2, 3, 4)
+    fitter.estimate()
 
     plt.show()
 
 
 if __name__ == "__main__":
     px4_case = PX4AircraftCase("C:\\Users\\xuhao\\Desktop\\FLYLOG\\2017-10-26\\log002.ulg")
-
-    process_lat_analyse(px4_case, [(72.5, 88.2), (145.2, 160.6), (202, 219)], win_num=16, omg_min=1, omg_max=36)
+    process_lat_analyse(px4_case, [(72.5, 88.2), (145.2, 160.6), (202, 219)], win_num=16, omg_min=3, omg_max=30)
     #process_lat_analyse(px4_case, [(72.5, 88.2)], win_num=5, omg_min=3, omg_max=36)
