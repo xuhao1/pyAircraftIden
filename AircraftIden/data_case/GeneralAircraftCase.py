@@ -243,5 +243,5 @@ def process_lat_analyse(test_case: GeneralAircraftCase, time_ranges, win_num=32,
 if __name__ == "__main__":
     px4_case = PX4AircraftCase("C:\\Users\\xuhao\\Desktop\\FLYLOG\\2017-10-26\\log002.ulg")
 
-    process_lat_analyse(px4_case, [(72.5, 88.2), (145.2, 160.6), (202, 219)], win_num=16, omg_min=0.1, omg_max=36)
+    process_lat_analyse(px4_case, [(72.5, 88.2), (145.2, 160.6), (202, 219)], win_num=16, omg_min=1, omg_max=36)
     #process_lat_analyse(px4_case, [(72.5, 88.2)], win_num=5, omg_min=3, omg_max=36)
