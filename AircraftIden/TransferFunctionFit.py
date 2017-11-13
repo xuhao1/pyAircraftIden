@@ -2,7 +2,7 @@ import math
 import numpy as np
 import matplotlib.pyplot as plt
 from AircraftIden import FreqIdenSIMO
-from scipy.optimize import minimize
+from scipy.optimize import minimize, basinhopping
 import scipy.signal as signal
 import time
 
@@ -14,6 +14,15 @@ def freqres(b, a, tau, w):
     amp = 20 * np.log10(np.absolute(h))
     pha = np.arctan2(h.imag, h.real) * 180 / math.pi
     return amp, pha
+
+
+def bodeplot(b, a, tau, ws):
+    s = 1j * ws
+    h = np.polyval(b, s) * np.exp(-tau * s) / np.polyval(a, s)
+    # amp, pha = 20 * np.log10(np.absolute(H)), np.arctan2(H.imag, H.real) * 180 / math.pi
+    amp = 20 * np.log10(np.absolute(h))
+    pha = np.arctan2(h.imag, h.real) * 180 / math.pi
+    return ws, amp, pha
 
 
 class TransferFunctionFit(object):
@@ -81,14 +90,10 @@ class TransferFunctionFit(object):
             tau = x[-1]
             return self.cost_func(num, den, tau)
 
-        x0 = np.zeros(self.den_ord + self.num_ord + 1)
-        x0[0] = 1
-        x0[self.num_ord] = 1
+        x0 = self.setup_initvals()
 
-        res = minimize(cost_func_x, x0, options={'maxiter': 10000, 'disp': False})
-        print(res.x)
-        x = res.x.copy() / res.x[0]
-        x[-1] = res.x[-1]
+        x, J = self.solve(x0,cost_func_x)
+
         num = x[0:self.num_ord]
         den = x[self.num_ord:self.num_ord + self.den_ord]
         tau = x[-1]
@@ -96,19 +101,38 @@ class TransferFunctionFit(object):
         self.den = den
         self.tau = tau
 
-        print("J {} num {} den {} tau {}".format(res.fun, num, den, tau))
+        print("J {} num {} den {} tau {}".format(J, num, den, tau))
         self.plot()
 
         return num, den
+
+    def solve(self, x0, f):
+        bounds = [(None, None) for i in range(len(x0))]
+        bounds[-1] = (0, 0.1)
+        # ret = minimize(cost_func_x, x0, options={'maxiter': 10000000, 'disp': False},bounds=bounds,tol=1e-15)
+        minimizer_kwargs = {"method": "L-BFGS-B", 'bounds': bounds}
+        ret = basinhopping(f, x0, minimizer_kwargs=minimizer_kwargs, niter=200)
+        print(ret)
+        x = ret.x.copy() / ret.x[0]
+        x[-1] = ret.x[-1]
+        J = ret.fun
+        return x, J
+
+    def setup_initvals(self):
+        x0 = np.zeros(self.den_ord + self.num_ord + 1)
+        x0[0] = 1
+        x0[self.num_ord] = 1
+        x0[-1] = 0.00
+        return x0
 
     def plot(self):
         H = self.source_H
         freq = self.source_freq
         num = self.num
         den = self.den
+        tau = self.tau
 
-        s1 = signal.lti(num, den)
-        w, mag, phase = signal.bode(s1, self.source_freq)
+        w, mag, phase = bodeplot(num, den, tau, self.source_freq)
         h_amp, h_phase = FreqIdenSIMO.get_amp_pha_from_h(H)
 
         plt.subplot(311)
