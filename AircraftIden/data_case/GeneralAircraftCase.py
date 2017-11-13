@@ -228,17 +228,19 @@ def process_lat_analyse(test_case: GeneralAircraftCase, time_ranges, win_num=32,
     # plt.plot(t_data, ele_data, t_data, alt)
     # plt.grid(which='both', axis='both')
 
-    plt.figure('Elevator ->Pitch rate')
 
     freq, H, gamma2, gxx, gxy, gyy = simo_iden.get_freq_iden(0)
-    fitter = TransferFunctionFit(freq, H, gamma2, 2, 5)
+    fitter = TransferFunctionFit(freq, H, gamma2, 1, 3,enable_debug_plot=True)
     fitter.estimate()
+    plt.figure('Elevator ->Pitch rate')
+    fitter.plot()
 
-    plt.figure('Elevator -> rate of climb rate')
 
     freq, H, gamma2, gxx, gxy, gyy = simo_iden.get_freq_iden(1)
-    fitter = TransferFunctionFit(freq, H, gamma2, 3, 4)
+    fitter = TransferFunctionFit(freq, H, gamma2, 3, 4,enable_debug_plot=True)
     fitter.estimate()
+    plt.figure('Elevator -> rate of climb rate')
+    fitter.plot()
 
     plt.show()
 

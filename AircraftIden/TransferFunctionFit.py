@@ -26,7 +26,7 @@ def bodeplot(b, a, tau, ws):
 
 
 class TransferFunctionFit(object):
-    def __init__(self, freq, H, coheren, num_ord, den_ord, nw=20):
+    def __init__(self, freq, H, coheren, num_ord, den_ord, nw=20,enable_debug_plot = False):
         # num/den
         self.num_ord = num_ord
         self.den_ord = den_ord
@@ -36,8 +36,12 @@ class TransferFunctionFit(object):
         self.source_coheren = coheren
         self.wg = 1.0
         self.wp = 0.01745
+        self.iter_times = 100
+
+        self.accept_J = 10
 
         self.est_omg_ptr_list = []
+        self.enable_debug_plot = enable_debug_plot
 
     def cost_func_at_omg_ptr(self, num, den, tau, omg_ptr):
         omg = self.source_freq[omg_ptr]
@@ -69,7 +73,7 @@ class TransferFunctionFit(object):
 
         omg_list = np.linspace(np.log(omg_min), np.log(omg_max), self.nw)
         omg_list = np.exp(omg_list)
-        print("omg list {}".format(omg_list))
+        # print("omg list {}".format(omg_list))
 
         omg_ptr = 0
         self.est_omg_ptr_list = []
@@ -81,8 +85,8 @@ class TransferFunctionFit(object):
             elif omg_ptr < omg_list.__len__() and i == self.source_freq.__len__() - 1:
                 self.est_omg_ptr_list.append(i)
                 omg_ptr = omg_ptr + 1
-
-        print("Will fit from {} rad/s to {} rad/s".format(omg_min, omg_max))
+        # print("omg ptr list",self.est_omg_ptr_list)
+        # print("Will fit from {} rad/s to {} rad/s".format(omg_min, omg_max))
 
         def cost_func_x(x):
             num = x[0:self.num_ord]
@@ -90,10 +94,34 @@ class TransferFunctionFit(object):
             tau = x[-1]
             return self.cost_func(num, den, tau)
 
-        x0 = self.setup_initvals()
+        J_min_max = 1000000
+        J_min = J_min_max
+        x = [None for i in range(self.num_ord + self.den_ord + 1)]
+        # plt.figure("resolving..")
+        # plt.ion()
+        for i in range(self.iter_times):
+            x_tmp, J = self.solve(cost_func_x)
+            if J < J_min:
+                print("Found new better res J:{}".format(J))
+                x = x_tmp.copy()
+                self.setup_transferfunc(x)
+                if self.enable_debug_plot:
+                    plt.ion()
+                    plt.figure("resolving..")
+                    plt.clf()
+                    self.plot()
+                    if J_min == J_min_max:
+                        plt.pause(0.1)
+                    plt.pause(0.01)
+                J_min = J
+                if J_min <self.accept_J:
+                    break
+        plt.ioff()
 
-        x, J = self.solve(x0,cost_func_x)
+        print("J {} num {} den {} tau {}".format(J, self.num, self.den, self.tau))
+        return self.num, self.den, self.tau
 
+    def setup_transferfunc(self, x):
         num = x[0:self.num_ord]
         den = x[self.num_ord:self.num_ord + self.den_ord]
         tau = x[-1]
@@ -101,27 +129,18 @@ class TransferFunctionFit(object):
         self.den = den
         self.tau = tau
 
-        print("J {} num {} den {} tau {}".format(J, num, den, tau))
-        self.plot()
-
-        return num, den
-
-    def solve(self, x0, f):
+    def solve(self, f):
+        x0 = self.setup_initvals()
         bounds = [(None, None) for i in range(len(x0))]
         bounds[-1] = (0, 0.1)
-        # ret = minimize(cost_func_x, x0, options={'maxiter': 10000000, 'disp': False},bounds=bounds,tol=1e-15)
-        minimizer_kwargs = {"method": "L-BFGS-B", 'bounds': bounds}
-        ret = basinhopping(f, x0, minimizer_kwargs=minimizer_kwargs, niter=200)
-        print(ret)
+        ret = minimize(f, x0, options={'maxiter': 10000000, 'disp': False}, bounds=bounds, tol=1e-15)
         x = ret.x.copy() / ret.x[0]
         x[-1] = ret.x[-1]
         J = ret.fun
         return x, J
 
     def setup_initvals(self):
-        x0 = np.zeros(self.den_ord + self.num_ord + 1)
-        x0[0] = 1
-        x0[self.num_ord] = 1
+        x0 = np.random.rand(self.den_ord + self.num_ord + 1)
         x0[-1] = 0.00
         return x0
 
@@ -173,7 +192,7 @@ def siso_freq_iden():
     #
     freq, H, gamma2, gxx, gxy, gyy = simo_iden.get_freq_iden(0)
 
-    fitter = TransferFunctionFit(freq, H, gamma2, 2, 4, nw=20)
+    fitter = TransferFunctionFit(freq, H, gamma2, 2, 4, nw=20,enable_debug_plot=True)
     fitter.estimate()
 
     plt.show()
