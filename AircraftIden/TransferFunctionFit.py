@@ -7,9 +7,9 @@ import scipy.signal as signal
 import time
 
 
-def freqres(b, a, w):
+def freqres(b, a, tau, w):
     s = 1j * w
-    h = np.polyval(b, s) / np.polyval(a, s)
+    h = np.polyval(b, s) * np.exp(-tau * s) / np.polyval(a, s)
     # amp, pha = 20 * np.log10(np.absolute(H)), np.arctan2(H.imag, H.real) * 180 / math.pi
     amp = 20 * np.log10(np.absolute(h))
     pha = np.arctan2(h.imag, h.real) * 180 / math.pi
@@ -18,7 +18,7 @@ def freqres(b, a, w):
 
 class TransferFunctionFit(object):
     def __init__(self, freq, H, coheren, num_ord, den_ord, nw=20):
-        #num/den
+        # num/den
         self.num_ord = num_ord
         self.den_ord = den_ord
         self.nw = nw
@@ -30,9 +30,9 @@ class TransferFunctionFit(object):
 
         self.est_omg_ptr_list = []
 
-    def cost_func_at_omg_ptr(self, num, den, omg_ptr):
+    def cost_func_at_omg_ptr(self, num, den, tau, omg_ptr):
         omg = self.source_freq[omg_ptr]
-        amp, pha = freqres(num, den, omg)
+        amp, pha = freqres(num, den, tau, omg)
 
         h = self.source_H[omg_ptr]
         h_amp = 20 * np.log10(np.absolute(h))
@@ -45,8 +45,8 @@ class TransferFunctionFit(object):
         wgamma = wgamma * wgamma
         return J * wgamma
 
-    def cost_func(self, num, den):
-        cost_func_at_omg = lambda omg_ptr: self.cost_func_at_omg_ptr(num, den, omg_ptr)
+    def cost_func(self, num, den, tau):
+        cost_func_at_omg = lambda omg_ptr: self.cost_func_at_omg_ptr(num, den, tau, omg_ptr)
         arr_func = np.vectorize(cost_func_at_omg)
         cost_arr = arr_func(self.est_omg_ptr_list)
         return np.sum(cost_arr) * 20 / self.nw
@@ -78,20 +78,25 @@ class TransferFunctionFit(object):
         def cost_func_x(x):
             num = x[0:self.num_ord]
             den = x[self.num_ord:self.num_ord + self.den_ord]
-            return self.cost_func(num, den)
+            tau = x[-1]
+            return self.cost_func(num, den, tau)
 
-        x0 = np.zeros(self.den_ord + self.num_ord)
+        x0 = np.zeros(self.den_ord + self.num_ord + 1)
         x0[0] = 1
         x0[self.num_ord] = 1
 
         res = minimize(cost_func_x, x0, options={'maxiter': 10000, 'disp': False})
+        print(res.x)
         x = res.x.copy() / res.x[0]
+        x[-1] = res.x[-1]
         num = x[0:self.num_ord]
         den = x[self.num_ord:self.num_ord + self.den_ord]
+        tau = x[-1]
         self.num = num
         self.den = den
+        self.tau = tau
 
-        print("J {} num {} den {}".format(res.fun,num,den))
+        print("J {} num {} den {} tau {}".format(res.fun, num, den, tau))
         self.plot()
 
         return num, den
@@ -107,15 +112,15 @@ class TransferFunctionFit(object):
         h_amp, h_phase = FreqIdenSIMO.get_amp_pha_from_h(H)
 
         plt.subplot(311)
-        plt.semilogx(freq, h_amp,label = 'source')
-        plt.semilogx(w, mag,label = 'fit')
+        plt.semilogx(freq, h_amp, label='source')
+        plt.semilogx(w, mag, label='fit')
         plt.title("H Amp")
         plt.grid(which='both')
         plt.legend()
 
         plt.subplot(312)
-        plt.semilogx(freq, h_phase,label = 'source')
-        plt.semilogx(w, phase,label = 'fit')
+        plt.semilogx(freq, h_phase, label='source')
+        plt.semilogx(w, phase, label='fit')
         plt.title("H Phase")
         plt.grid(which='both')
         plt.legend()
@@ -144,7 +149,7 @@ def siso_freq_iden():
     #
     freq, H, gamma2, gxx, gxy, gyy = simo_iden.get_freq_iden(0)
 
-    fitter = TransferFunctionFit(freq, H, gamma2, 2, 4,nw=20)
+    fitter = TransferFunctionFit(freq, H, gamma2, 2, 4, nw=20)
     fitter.estimate()
 
     plt.show()
