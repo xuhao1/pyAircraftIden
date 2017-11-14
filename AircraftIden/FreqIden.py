@@ -161,14 +161,8 @@ class FreqIdenSIMO:
     @staticmethod
     def get_amp_pha_from_h(H):
         amp, pha = 20 * np.log10(np.absolute(H)), np.arctan2(H.imag, H.real) * 180 / math.pi
-
-        def pha_postprocess(pha):
-            if pha > 90:
-                return pha - 360
-            return pha
-
-        pha_post = np.vectorize(pha_postprocess)
-        return amp, pha_post(pha)
+        pha = np.unwrap(pha)
+        return amp, pha
 
     @staticmethod
     def get_coherence(gxx, gxy, gyy):

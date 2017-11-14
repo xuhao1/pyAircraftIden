@@ -9,8 +9,9 @@ def siso_freq_iden():
     ele_seq_source = arr[:, 1]
     q_seq_source = arr[:, 4]
     vvi_seq_source = arr[:,6]
+    theta_seq_source = arr[:,2]
 
-    simo_iden = FreqIdenSIMO(time_seq_source,1, 100, ele_seq_source, q_seq_source,vvi_seq_source, win_num=32)
+    simo_iden = FreqIdenSIMO(time_seq_source,0.5, 50, ele_seq_source, q_seq_source,theta_seq_source, win_num=32)
 
     plt.figure(0)
     simo_iden.plt_bode_plot(0)

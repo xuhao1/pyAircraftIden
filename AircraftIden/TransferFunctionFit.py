@@ -21,7 +21,7 @@ def bodeplot(b, a, tau, ws):
     h = np.polyval(b, s) * np.exp(-tau * s) / np.polyval(a, s)
     # amp, pha = 20 * np.log10(np.absolute(H)), np.arctan2(H.imag, H.real) * 180 / math.pi
     amp = 20 * np.log10(np.absolute(h))
-    pha = np.arctan2(h.imag, h.real) * 180 / math.pi
+    pha = np.unwrap(np.arctan2(h.imag, h.real)) * 180 / math.pi
     return ws, amp, pha
 
 
@@ -50,7 +50,12 @@ class TransferFunctionFit(object):
         h = self.source_H[omg_ptr]
         h_amp = 20 * np.log10(np.absolute(h))
         h_pha = np.arctan2(h.imag, h.real) * 180 / math.pi
-        J = self.wg * pow(h_amp - amp, 2) + self.wp * pow(h_pha - pha, 2)
+        pha_err = h_pha - pha
+        if pha_err > 180:
+            pha_err = pha_err - 360
+        if pha_err < -180:
+            pha_err = pha_err + 360
+        J = self.wg * pow(h_amp - amp, 2) + self.wp * pow(pha_err, 2)
 
         gama2 = self.source_coheren[omg_ptr]
 
@@ -117,6 +122,8 @@ class TransferFunctionFit(object):
                 if J_min <self.accept_J:
                     break
         plt.ioff()
+        plt.close("resolving..")
+
 
         print("J {} num {} den {} tau {}".format(J, self.num, self.den, self.tau))
         return self.num, self.den, self.tau

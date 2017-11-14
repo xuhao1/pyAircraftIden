@@ -2,10 +2,10 @@ import numpy as np
 from pyulog.core import ULog
 import matplotlib.pyplot as plt
 from scipy.interpolate import interp1d
-
-from AircraftIden import FreqIdenSIMO,TransferFunctionFit
 from AircraftIden.FreqIden import remove_seq_average_and_drift
+
 import math
+from pymavlink import quaternion
 
 
 class GeneralAircraftCase(object):
@@ -29,7 +29,6 @@ class GeneralAircraftCase(object):
     ele = np.ndarray([])
     rud = np.ndarray([])
     thr = np.ndarray([])
-
 
     controls = np.ndarray([])
 
@@ -162,7 +161,29 @@ class PX4AircraftCase(GeneralAircraftCase):
         t = data.data['timestamp'] / 1000000 - self.t_min
         pitchspeed = data.data['pitchspeed']
         self.pitchrate_flted = self.resample_data(t, pitchspeed)
-        pass
+
+        q0_arr = data.data['q[0]']
+        q1_arr = data.data['q[1]']
+        q2_arr = data.data['q[2]']
+        q3_arr = data.data['q[3]']
+
+        roll_arr = []
+        pitch_arr = []
+        yaw_arr = []
+        for i in range(len(q0_arr)):
+            q0 = q0_arr[i]
+            q1 = q1_arr[i]
+            q2 = q2_arr[i]
+            q3 = q3_arr[i]
+
+            quat = quaternion.Quaternion([q0, q1, q2, q3])
+            euler = quat.euler
+            # print(euler)
+            roll_arr.append(euler[0])
+            pitch_arr.append(euler[1])
+            yaw_arr.append(euler[2])
+
+        self.roll, self.pitch, self.yaw = self.resample_data(t, roll_arr, pitch_arr, yaw_arr)
 
     def parse_local_position_data(self, data: ULog.Data):
         # ['timestamp', 'ref_timestamp', 'ref_lat', 'ref_lon', 'surface_bottom_timestamp', 'x', 'y', 'z', 'delta_xy[0]',
@@ -187,65 +208,7 @@ def get_concat_data(test_case: GeneralAircraftCase, time_ranges, attrs):
             piece_data = remove_seq_average_and_drift(piece_data.copy())
             attr_data.append(piece_data)
         res[attr] = np.concatenate(attr_data)
-    return res
-
-
-def process_lat_analyse(test_case: GeneralAircraftCase, time_ranges, win_num=32, omg_min=0.1, omg_max=100):
-    # FreqIdenSIMO
-    ele_data = None
-    r_data = None
-
-    needed_data = ['ele', 'p', 'q', 'r', 'thr', 'climb_rate', 'alt']
-    datas = get_concat_data(test_case, time_ranges, needed_data)
-    ele_data = datas['ele']
-    p_data = datas['p']
-    q_data = datas['q']
-    r_data = datas['r']
-    thr_data = datas['thr']
-    roc_data = datas['climb_rate']
-    alt = datas['alt']
-
-    total_time = len(ele_data) / test_case.sample_rate
-
-    t_data = np.linspace(0, total_time, len(ele_data))
-
-    win_num_min = 2
-    win_num_max = int(total_time * omg_max / (20 * math.pi) - 1)
-
-    if time_ranges.__len__() < 3:
-        win_num_min = 5
-
-    print("win num should in {} and {}".format(win_num_min, win_num_max))
-
-    simo_iden = FreqIdenSIMO(t_data, omg_min, omg_max, ele_data, r_data, roc_data, win_num=win_num,
-                             assit_input=thr_data)
-
-    # plt.figure(0)
-    # plt.subplot(211)
-    # plt.plot(simo_iden.time_seq, simo_iden.x_seq, simo_iden.time_seq, simo_iden.y_seqs[1])
-    # plt.grid(which='both', axis='both')
-    # plt.subplot(212)
-    # plt.plot(t_data, ele_data, t_data, alt)
-    # plt.grid(which='both', axis='both')
-
-
-    freq, H, gamma2, gxx, gxy, gyy = simo_iden.get_freq_iden(0)
-    fitter = TransferFunctionFit(freq, H, gamma2, 1, 3,enable_debug_plot=True)
-    fitter.estimate()
-    plt.figure('Elevator ->Pitch rate')
-    fitter.plot()
-
-
-    freq, H, gamma2, gxx, gxy, gyy = simo_iden.get_freq_iden(1)
-    fitter = TransferFunctionFit(freq, H, gamma2, 3, 4,enable_debug_plot=True)
-    fitter.estimate()
-    plt.figure('Elevator -> rate of climb rate')
-    fitter.plot()
-
-    plt.show()
-
-
-if __name__ == "__main__":
-    px4_case = PX4AircraftCase("C:\\Users\\xuhao\\Desktop\\FLYLOG\\2017-10-26\\log002.ulg")
-    process_lat_analyse(px4_case, [(72.5, 88.2), (145.2, 160.6), (202, 219)], win_num=16, omg_min=3, omg_max=30)
-    #process_lat_analyse(px4_case, [(72.5, 88.2)], win_num=5, omg_min=3, omg_max=36)
+        datalen = res[attrs[0]].__len__()
+        totaltime = datalen / test_case.sample_rate
+        tseq = np.linspace(0, totaltime, datalen)
+    return totaltime, tseq, res
