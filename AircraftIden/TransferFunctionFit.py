@@ -26,7 +26,7 @@ def bodeplot(b, a, tau, ws):
 
 
 class TransferFunctionFit(object):
-    def __init__(self, freq, H, coheren, num_ord, den_ord, nw=20,enable_debug_plot = False):
+    def __init__(self, freq, H, coheren, num_ord, den_ord, nw=20, enable_debug_plot=False):
         # num/den
         self.num_ord = num_ord
         self.den_ord = den_ord
@@ -69,7 +69,7 @@ class TransferFunctionFit(object):
         cost_arr = arr_func(self.est_omg_ptr_list)
         return np.sum(cost_arr) * 20 / self.nw
 
-    def estimate(self, omg_min=None, omg_max=None):
+    def init_omg_list(self, omg_min, omg_max):
         if omg_min is None:
             omg_min = self.source_freq[0]
 
@@ -90,6 +90,10 @@ class TransferFunctionFit(object):
             elif omg_ptr < omg_list.__len__() and i == self.source_freq.__len__() - 1:
                 self.est_omg_ptr_list.append(i)
                 omg_ptr = omg_ptr + 1
+
+    def estimate(self, omg_min=None, omg_max=None):
+        self.init_omg_list(omg_min, omg_max)
+
         # print("omg ptr list",self.est_omg_ptr_list)
         # print("Will fit from {} rad/s to {} rad/s".format(omg_min, omg_max))
 
@@ -119,11 +123,10 @@ class TransferFunctionFit(object):
                         plt.pause(0.1)
                     plt.pause(0.01)
                 J_min = J
-                if J_min <self.accept_J:
+                if J_min < self.accept_J:
                     break
         plt.ioff()
         plt.close("resolving..")
-
 
         print("J {} num {} den {} tau {}".format(J, self.num, self.den, self.tau))
         return self.num, self.den, self.tau
@@ -199,7 +202,7 @@ def siso_freq_iden():
     #
     freq, H, gamma2, gxx, gxy, gyy = simo_iden.get_freq_iden(0)
 
-    fitter = TransferFunctionFit(freq, H, gamma2, 2, 4, nw=20,enable_debug_plot=True)
+    fitter = TransferFunctionFit(freq, H, gamma2, 2, 4, nw=20, enable_debug_plot=True)
     fitter.estimate()
 
     plt.show()

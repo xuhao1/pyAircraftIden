@@ -115,6 +115,17 @@ class FreqIdenSIMO:
         gamma2 = FreqIdenSIMO.get_coherence(gxx, gxy, gyy)
         return freq, H, gamma2, gxx, gxy, gyy
 
+    def get_all_idens(self):
+        Hs = []
+        coheres = []
+        freq = None
+
+        for i in range(self.y_seqs.__len__()):
+            freq, h, co, _, _, _ = self.get_freq_iden(i)
+            Hs.append(h)
+            coheres.append(co)
+        return freq,Hs,coheres
+
     def plt_bode_plot(self, index=0):
         # f, ax = plt.subplots()
 
@@ -123,9 +134,9 @@ class FreqIdenSIMO:
 
         plt.subplot(411)
         plt.grid(which='both')
-        plt.semilogx(freq, 20 * np.log10(gxx),label = 'gxx')
-        plt.semilogx(freq, 20 * np.log10(gyy),label = 'gyy')
-        plt.semilogx(freq, 20 * np.log10(np.absolute(gxy)),label = 'gxy')
+        plt.semilogx(freq, 20 * np.log10(gxx), label='gxx')
+        plt.semilogx(freq, 20 * np.log10(gyy), label='gyy')
+        plt.semilogx(freq, 20 * np.log10(np.absolute(gxy)), label='gxy')
         plt.title("Gxx & Gyy Tilde of ele and theta")
         plt.legend()
 
@@ -139,9 +150,9 @@ class FreqIdenSIMO:
         plt.grid(which='both')
 
         plt.subplot(414)
-        plt.semilogx(freq, gamma2,label = "coherence of xy")
+        plt.semilogx(freq, gamma2, label="coherence of xy")
         if self.enable_assit_input:
-            plt.semilogx(freq, self.get_cross_coherence(-1,-2),label='coherece of x and assit input')
+            plt.semilogx(freq, self.get_cross_coherence(-1, -2), label='coherece of x and assit input')
         plt.legend()
         plt.title("gamma2")
         plt.grid(which='both')
