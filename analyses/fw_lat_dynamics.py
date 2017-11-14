@@ -33,19 +33,22 @@ def process_lat_analyse(test_case: GeneralAircraftCase, time_ranges, win_num=32,
     freq, H, gamma2, gxx, gxy, gyy = simo_iden.get_freq_iden(0)
     fitter = TransferFunctionFit(freq, H, gamma2, 1, 2, enable_debug_plot=True)
     fitter.estimate()
+
     plt.figure('Elevator ->Pitch rate')
     fitter.plot()
 
-    plt.figure('Elevator -> rate of climb rate')
     freq, H, gamma2, gxx, gxy, gyy = simo_iden.get_freq_iden(1)
     fitter = TransferFunctionFit(freq, H, gamma2, 2, 4, enable_debug_plot=False)
     fitter.estimate()
+
+    plt.figure('Elevator -> rate of climb rate')
     fitter.plot()
 
     print("Process pitchangle")
     freq, H, gamma2, gxx, gxy, gyy = simo_iden.get_freq_iden(2)
     fitter = TransferFunctionFit(freq, H, gamma2, 1, 3, enable_debug_plot=True)
     fitter.estimate()
+
     plt.figure('Elevator -> pitch angle')
     fitter.plot()
 
