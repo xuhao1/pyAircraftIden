@@ -24,6 +24,8 @@ class StateSpaceModel(object):
         self.check_syms()
         self.T = None
         self.s = sp.symbols('s')
+
+        self.pro_calc()
         pass
 
     def check_dims(self):
@@ -65,28 +67,35 @@ class StateSpaceModel(object):
         self.T = (H0 + s * H1) * Tpart2
         print("Symbolic transfer matrix {}".format(self.T))
 
+    def pro_calc(self):
+        M_inv = self.M ** -1
+        self.A = M_inv * self.F
+        self.B = M_inv * self.G
+        # print("A {} B {}".format(self.A,self.B))
+
     def calucate_transfer_matrix(self, sym_subs):
         # sym_subs = dict()
-        M_num = self.M.evalf(subs=sym_subs)
-        F_num = self.F.evalf(subs=sym_subs)
-        G_num = self.G.evalf(subs=sym_subs)
+        A_num = self.A.evalf(subs=sym_subs)
+        B_num = self.B.evalf(subs=sym_subs)
         H0_num = self.H0.evalf(subs=sym_subs)
         H1_num = self.H1.evalf(subs=sym_subs)
-        Minv = M_num ** -1
+
         s = self.s
-        Tpart2 = ((s * sp.eye(self.dims) - Minv * F_num) ** -1) * Minv * G_num
+
+        Tpart2 = (s * np.eye(self.dims) - A_num) ** -1 * B_num
         self.T = (H0_num + s * H1_num) * Tpart2
 
     def calucate_transfer_matrix_at_s(self, sym_subs, s):
         # sym_subs = dict()
-        M_num = self.M.evalf(subs=sym_subs)
-        F_num = self.F.evalf(subs=sym_subs)
-        G_num = self.G.evalf(subs=sym_subs)
-        H0_num = self.H0.evalf(subs=sym_subs)
-        H1_num = self.H1.evalf(subs=sym_subs)
-        Minv = M_num ** -1
-        Tpart2 = ((s * sp.eye(self.dims) - Minv * F_num) ** -1) * Minv * G_num
-        self.Tnum = (H0_num + s * H1_num) * Tpart2
+        A_num = sp.matrix2numpy(self.A.evalf(subs=sym_subs),dtype=np.complex)
+        B_num = sp.matrix2numpy(self.B.evalf(subs=sym_subs),dtype=np.complex)
+        H0_num = sp.matrix2numpy(self.H0.evalf(subs=sym_subs),dtype=np.complex)
+        H1_num = sp.matrix2numpy(self.H1.evalf(subs=sym_subs),dtype=np.complex)
+
+        TT = (s * np.eye(self.dims) - A_num)
+        TT = np.linalg.inv((s * np.eye(self.dims) - A_num))
+        Tpart2 = np.dot(TT, B_num)
+        self.Tnum = np.dot((H0_num + s * H1_num), Tpart2)
 
     def get_transfer_func(self, y_index, u_index):
         # Must be run after cal
