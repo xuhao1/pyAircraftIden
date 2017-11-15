@@ -52,6 +52,19 @@ class StateSpaceModel(object):
     def check_syms(self):
         pass
 
+    def calcuate_symbolic_trans_matrix(self):
+        print("Try to calc symbolic transfer matrix")
+        M = self.M
+        F = self.F
+        G = self.G
+        H0 = self.H0
+        H1 = self.H1
+        Minv = M ** -1
+        s = self.s
+        Tpart2 = ((s * sp.eye(self.dims) - Minv * F) ** -1) * Minv * G
+        self.T = (H0 + s * H1) * Tpart2
+        print("Symbolic transfer matrix {}".format(self.T))
+
     def calucate_transfer_matrix(self, sym_subs):
         # sym_subs = dict()
         M_num = self.M.evalf(subs=sym_subs)
@@ -64,16 +77,27 @@ class StateSpaceModel(object):
         Tpart2 = ((s * sp.eye(self.dims) - Minv * F_num) ** -1) * Minv * G_num
         self.T = (H0_num + s * H1_num) * Tpart2
 
+    def calucate_transfer_matrix_at_s(self, sym_subs, s):
+        # sym_subs = dict()
+        M_num = self.M.evalf(subs=sym_subs)
+        F_num = self.F.evalf(subs=sym_subs)
+        G_num = self.G.evalf(subs=sym_subs)
+        H0_num = self.H0.evalf(subs=sym_subs)
+        H1_num = self.H1.evalf(subs=sym_subs)
+        Minv = M_num ** -1
+        Tpart2 = ((s * sp.eye(self.dims) - Minv * F_num) ** -1) * Minv * G_num
+        self.Tnum = (H0_num + s * H1_num) * Tpart2
+
     def get_transfer_func(self, y_index, u_index):
         # Must be run after cal
         assert self.T is not None, "Must run calucate_transfer_matrix first"
         return self.T[y_index, u_index]
 
-    def get_amp_pha_from_trans(self, trans, w):
-        h = complex(trans.evalf(subs={self.s: 1j * w}))
+    def get_amp_pha_from_matrix(self, u_index, y_index):
+        h = self.Tnum[y_index, u_index]
+        h = complex(h)
         amp = 20 * np.log10(np.absolute(h))
         pha = np.arctan2(h.imag, h.real) * 180 / math.pi
-
         return amp, pha
 
 
@@ -88,8 +112,6 @@ class StateSpaceIdenSIMO(object):
         self.coherens = coherens
         self.nw = nw
 
-
-
     def cost_func(self, ssm: StateSpaceModel, x):
         sym_sub = dict()
         assert len(x) == len(self.x_syms), 'State length must be equal with x syms'
@@ -99,14 +121,14 @@ class StateSpaceIdenSIMO(object):
 
         # init transfer matrix
         sym_sub.update(self.constant_defines)
+
         # print(sym_sub)
-        ssm.calucate_transfer_matrix(sym_sub)
+        # ssm.calucate_transfer_matrix(sym_sub)
 
-        def cost_func_at_omg_ptr(trans, omg_ptr, y_index):
-            omg = self.freq[omg_ptr]
-            amp, pha = ssm.get_amp_pha_from_trans(trans, omg)
+        def cost_func_at_omg_ptr_chn(omg_ptr, y_index):
+            # amp, pha = ssm.get_amp_pha_from_trans(trans, omg)
+            amp, pha = ssm.get_amp_pha_from_matrix(0, y_index)
             h = self.Hs[y_index][omg_ptr]
-
             h_amp = 20 * np.log10(np.absolute(h))
             h_pha = np.arctan2(h.imag, h.real) * 180 / math.pi
             pha_err = h_pha - pha
@@ -122,19 +144,20 @@ class StateSpaceIdenSIMO(object):
             wgamma = wgamma * wgamma
             return J * wgamma
 
-        def channel_cost_func(ssm: StateSpaceModel, chn):
-            trans = ssm.get_transfer_func(chn, 0)
-            trans = trans.evalf(subs=self.constant_defines)
-            cost_func_at_omg = lambda omg_ptr: cost_func_at_omg_ptr(trans, omg_ptr, chn)
-            arr_func = np.vectorize(cost_func_at_omg)
-            cost_arr = arr_func(self.est_omg_ptr_list)
-            return np.sum(cost_arr) * 20 / self.nw
+        def cost_func_at_omg_ptr(omg_ptr):
+            omg = self.freq[omg_ptr]
+            ssm.calucate_transfer_matrix_at_s(sym_sub, omg * 1j)
+            chn_cost_func = lambda chn: cost_func_at_omg_ptr_chn(omg_ptr, chn)
+            chn_cost_func = np.vectorize(chn_cost_func)
+            J_arr = chn_cost_func(range(ssm.y_dims))
+            J = np.average(J_arr)
+            return J
 
-        chn_cost_func = lambda chn: channel_cost_func(ssm, chn)
-        chn_cost_func = np.vectorize(chn_cost_func)
-        J_arr = chn_cost_func(range(ssm.y_dims))
-        J = np.average(J_arr)
-        print(x,J)
+        omg_ptr_cost_func = np.vectorize(cost_func_at_omg_ptr)
+        J = np.average(omg_ptr_cost_func(self.est_omg_ptr_list)) * 20
+        print(x, J)
+        return J
+
     def estimate(self, ssm: StateSpaceModel, syms, omg_min=None, omg_max=None, constant_defines=None):
         if constant_defines is None:
             constant_defines = dict()
@@ -269,5 +292,56 @@ def lat_dyn_example():
     ssm_iden.estimate(lat_dyn_state_space, syms, constant_defines={U0: U_trim, W0: W_trim, th0: th_trim})
 
 
+def test_pure_symbloic():
+    Xwdot, Zwdot, Mwdot = sp.symbols('Xwdot Zwdot Mwdot')
+
+    M = sp.Matrix([[1, -Xwdot, 0, 0],
+                   [0, 1 - Zwdot, 0, 0],
+                   [0, -Mwdot, 1, 0],
+                   [0, 0, 0, 1]])
+
+    g = 9.78
+    Xu, Xw, Xq, W0, th0 = sp.symbols('Xu Xw Xq W0 th0')
+    Zu, Zw, Zq, U0 = sp.symbols('Zu Zw Zq U0')
+    Mu, Mw, Mq = sp.symbols('Mu Mw Mq')
+
+    F = sp.Matrix([[Xu, Xw, Xq - W0, -g * sp.cos(th0)],
+                   [Zu, Zw, Zq + U0, -g * sp.sin(th0)],
+                   [Mu, Mw, Mq, 0],
+                   [0, 0, 1, 0]])
+
+    Xele, Zele, Mele = sp.symbols('Xele,Zele,Mele')
+    G = sp.Matrix([[Xele],
+                   [Zele],
+                   [Mele],
+                   [0]])
+
+    # direct using u w q th for y
+    H0 = sp.Matrix([[1, 0, 0, 0],
+                    [0, 1, 0, 0],
+                    [0, 0, 1, 0],
+                    [0, 0, 0, 1]])
+
+    H1 = sp.Matrix.zeros(4, 4)
+
+    syms = [Xwdot, Zwdot, Mwdot,
+            Xu, Xw, Xq, W0, th0,
+            Zu, Zw, Zq, U0,
+            Mu, Mw, Mq,
+            Xele, Zele, Mele]
+    lat_dyn_state_space = StateSpaceModel(M, F, G, H0, H1, syms)
+    syms = [Xwdot, Zwdot, Mwdot,
+            Xu, Xw, Xq, W0, th0,
+            Zu, Zw, Zq, U0,
+            Mu, Mw, Mq,
+            Xele, Zele, Mele]
+    subs = dict()
+    for key in syms:
+        subs[key] = random.random()
+    lat_dyn_state_space.calucate_transfer_matrix_at_s(subs, 36J)
+    print(lat_dyn_state_space.T)
+
+
 if __name__ == "__main__":
     lat_dyn_example()
+    # test_pure_symbloic()
