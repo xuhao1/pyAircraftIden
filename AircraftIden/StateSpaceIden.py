@@ -26,6 +26,9 @@ class StateSpaceModel(object):
         self.s = sp.symbols('s')
 
         self.pro_calc()
+
+        self.new_param_raw_defines = dict()
+        self.new_param_raw_pos = dict()
         pass
 
     def check_dims(self):
@@ -73,6 +76,48 @@ class StateSpaceModel(object):
         self.B = M_inv * self.G
         # print("A {} B {}".format(self.A,self.B))
 
+    def load_constant_defines(self, constant_syms):
+        print(constant_syms)
+        print(self.A)
+        A = self.A.evalf(subs=constant_syms)
+        print(A)
+        B = self.B.evalf(subs=constant_syms)
+        H0 = self.H0.evalf(subs=constant_syms)
+        H1 = self.H1.evalf(subs=constant_syms)
+
+        self.A_converted = A.copy()
+        self.B_converted = B.copy()
+        self.H0_converted = H0.copy()
+        self.H1_converted = H1.copy()
+
+        self.A_numeric = self.determine_unknown_from_mat(self.A_converted, 'A')
+        self.B_numeric = self.determine_unknown_from_mat(self.B_converted, 'B')
+        self.H0_numeric = self.determine_unknown_from_mat(self.H0_converted, 'H0')
+        self.H1_numeric = self.determine_unknown_from_mat(self.H1_converted, 'H1')
+
+        print("new A {} B {}".format(self.A_converted, self.B_converted))
+        print("new H0 {} H1 {}".format(self.H0_converted, self.H1_converted))
+
+    def get_new_params(self):
+        return self.new_param_raw_defines.keys()
+
+    def determine_unknown_from_mat(self, mat, matname):
+        m, n = mat.shape
+        matnew = np.zeros([m, n])
+        for i in range(m):
+            for j in range(n):
+                element = mat[i, j]
+                if not element.is_number:
+                    print("{} {} {} unkown : {}".format(matname, i, j, element))
+                    new_param_name = "{}_{}_{}".format(matname, i, j)
+                    new_param = sp.symbols(new_param_name)
+                    self.new_param_raw_defines[new_param] = element
+                    self.new_param_raw_pos[new_param] = (matname, i, j)
+                    mat[i, j] = new_param
+                else:
+                    matnew[i, j] = element
+        return matnew
+
     def calucate_transfer_matrix(self, sym_subs):
         # sym_subs = dict()
         A_num = self.A.evalf(subs=sym_subs)
@@ -85,14 +130,33 @@ class StateSpaceModel(object):
         Tpart2 = (s * np.eye(self.dims) - A_num) ** -1 * B_num
         self.T = (H0_num + s * H1_num) * Tpart2
 
-    def calucate_transfer_matrix_at_s(self, sym_subs, s):
+    def calucate_transfer_matrix_at_s(self, sym_subs, s, using_converted=False):
         # sym_subs = dict()
-        A_num = sp.matrix2numpy(self.A.evalf(subs=sym_subs),dtype=np.complex)
-        B_num = sp.matrix2numpy(self.B.evalf(subs=sym_subs),dtype=np.complex)
-        H0_num = sp.matrix2numpy(self.H0.evalf(subs=sym_subs),dtype=np.complex)
-        H1_num = sp.matrix2numpy(self.H1.evalf(subs=sym_subs),dtype=np.complex)
+        if not using_converted:
+            A_num = sp.matrix2numpy(self.A.evalf(subs=sym_subs), dtype=np.complex)
+            B_num = sp.matrix2numpy(self.B.evalf(subs=sym_subs), dtype=np.complex)
+            H0_num = sp.matrix2numpy(self.H0.evalf(subs=sym_subs), dtype=np.complex)
+            H1_num = sp.matrix2numpy(self.H1.evalf(subs=sym_subs), dtype=np.complex)
+        else:
+            for sym in sym_subs:
+                mat_process = None
+                v = sym_subs[sym]
+                (mn, i, j) = self.new_param_raw_pos[sym]
+                if mn == "A":
+                    mat_process = self.A_numeric
+                elif mn == "B":
+                    mat_process = self.B_numeric
+                elif mn == "H0":
+                    mat_process = self.H0_numeric
+                elif mn == "H1":
+                    mat_process = self.H1_numeric
+                assert mat_process is not None, "Mat name {} illegal".format(mn)
+                mat_process[i][j] = v
+        A_num = self.A_numeric
+        B_num = self.B_numeric
+        H0_num = self.H0_numeric
+        H1_num = self.H1_numeric
 
-        TT = (s * np.eye(self.dims) - A_num)
         TT = np.linalg.inv((s * np.eye(self.dims) - A_num))
         Tpart2 = np.dot(TT, B_num)
         self.Tnum = np.dot((H0_num + s * H1_num), Tpart2)
@@ -120,6 +184,8 @@ class StateSpaceIdenSIMO(object):
         self.enable_debug_plot = enable_debug_plot
         self.coherens = coherens
         self.nw = nw
+        self.iter_times = 100
+        self.accept_J = 10
 
     def cost_func(self, ssm: StateSpaceModel, x):
         sym_sub = dict()
@@ -127,12 +193,6 @@ class StateSpaceIdenSIMO(object):
         # setup state x
         for i in range(len(x)):
             sym_sub[self.x_syms[i]] = x[i]
-
-        # init transfer matrix
-        sym_sub.update(self.constant_defines)
-
-        # print(sym_sub)
-        # ssm.calucate_transfer_matrix(sym_sub)
 
         def cost_func_at_omg_ptr_chn(omg_ptr, y_index):
             # amp, pha = ssm.get_amp_pha_from_trans(trans, omg)
@@ -155,7 +215,7 @@ class StateSpaceIdenSIMO(object):
 
         def cost_func_at_omg_ptr(omg_ptr):
             omg = self.freq[omg_ptr]
-            ssm.calucate_transfer_matrix_at_s(sym_sub, omg * 1j)
+            ssm.calucate_transfer_matrix_at_s(sym_sub, omg * 1j, using_converted=True)
             chn_cost_func = lambda chn: cost_func_at_omg_ptr_chn(omg_ptr, chn)
             chn_cost_func = np.vectorize(chn_cost_func)
             J_arr = chn_cost_func(range(ssm.y_dims))
@@ -164,26 +224,37 @@ class StateSpaceIdenSIMO(object):
 
         omg_ptr_cost_func = np.vectorize(cost_func_at_omg_ptr)
         J = np.average(omg_ptr_cost_func(self.est_omg_ptr_list)) * 20
-        print(x, J)
         return J
 
     def estimate(self, ssm: StateSpaceModel, syms, omg_min=None, omg_max=None, constant_defines=None):
         if constant_defines is None:
             constant_defines = dict()
-        self.constant_defines = constant_defines
         self.init_omg_list(omg_min, omg_max)
-        self.syms = syms
-        self.x_syms = []
 
-        for sym in syms:
-            if sym in constant_defines.keys():
-                print("Known param {}:{}".format(sym, constant_defines[sym]))
-            else:
-                self.x_syms.append(sym)
+        self.syms = syms
+        ssm.load_constant_defines(constant_defines)
+        self.x_syms = list(ssm.get_new_params())
         self.x_dims = len(self.x_syms)
         print("Will estimate num {} {}".format(self.x_syms.__len__(), self.x_syms))
 
-        self.solve(lambda x: self.cost_func(ssm, x))
+        J_min = 1000000
+        for i in range(self.iter_times):
+            x_tmp, J = self.solve(lambda x: self.cost_func(ssm, x))
+            if J < J_min:
+                print("Found new better res J:{}".format(J))
+                x = x_tmp.copy()
+                #self.setup_transferfunc(x)
+                # if self.enable_debug_plot:
+                #     plt.ion()
+                #     plt.figure("resolving..")
+                #     plt.clf()
+                #     self.plot()
+                #     if J_min == J_min_max:
+                #         plt.pause(0.1)
+                #     plt.pause(0.01)
+                J_min = J
+                if J_min < self.accept_J:
+                    break
 
     def solve(self, f):
         x0 = self.setup_initvals()
@@ -285,14 +356,7 @@ def lat_dyn_example():
             Xele, Zele, Mele]
     lat_dyn_state_space = StateSpaceModel(M, F, G, H0, H1, syms)
 
-    subs = dict()
-    for key in syms:
-        subs[key] = random.random()
-    print("using subs {}".format(subs))
-    # lat_dyn_state_space.calucate_transfer_matrix(subs)
-    # ele2u = lat_dyn_state_space.get_transfer_func(0, 0)
     ssm_iden = StateSpaceIdenSIMO(freq, Hs, coherens)
-    # def estimate(self, ssm: StateSpaceModel, syms, omg_min=None, omg_max=None, constant_defines=None):
     U_trim = airspeed_seq_source[0]
     W_trim = vvi_seq_source[0]
     th_trim = theta_seq_source[0]
@@ -347,8 +411,18 @@ def test_pure_symbloic():
     subs = dict()
     for key in syms:
         subs[key] = random.random()
+    constant_defines = {U0: 15, W0: 0, th0: 0.8}
+    lat_dyn_state_space.load_constant_defines(constant_defines)
+    new_unknown = lat_dyn_state_space.get_new_params()
+    print(new_unknown)
     lat_dyn_state_space.calucate_transfer_matrix_at_s(subs, 36J)
-    print(lat_dyn_state_space.T)
+    print(lat_dyn_state_space.Tnum)
+
+    syms = lat_dyn_state_space.get_new_params()
+    for key in syms:
+        subs[key] = random.random()
+    lat_dyn_state_space.calucate_transfer_matrix_at_s(subs, 36J, using_converted=True)
+    print(lat_dyn_state_space.Tnum)
 
 
 if __name__ == "__main__":
