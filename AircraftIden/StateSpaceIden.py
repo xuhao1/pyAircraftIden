@@ -309,7 +309,7 @@ class StateSpaceIdenSIMO(object):
         if self.fig is not None:
             plt.close(self.fig)
 
-        self.fig, self.axs = plt.subplots(self.y_dims+1, 1, sharey=True)
+        self.fig, self.axs = plt.subplots(self.y_dims, 1, sharey=True)
         fig, axs = self.fig, self.axs
         fig.set_size_inches(25, 15)
         fig.canvas.set_window_title('FreqRes vs est')
