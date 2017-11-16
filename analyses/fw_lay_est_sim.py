@@ -6,6 +6,7 @@ import math
 from AircraftIden.StateSpaceIden import StateSpaceIdenSIMO, StateSpaceModel
 import sympy as sp
 
+
 def lat_dyn_SIMO(iter, show_freq_iden_plots=False):
     # save_data_list = ["running_time", "yoke_pitch",
     #                  "theta", "airspeed", "q", "aoa", "VVI", "alt", "vx_body", "vy_body", "vz_body"]
@@ -37,7 +38,7 @@ def lat_dyn_SIMO(iter, show_freq_iden_plots=False):
         plt.plot(time_seq, theta_seq, label='theta')
         plt.legend()
     # plt.show()
-    simo_iden = FreqIdenSIMO(time_seq, 0.5, 50, ele_seq, airspeed_seq, vz_seq,
+    simo_iden = FreqIdenSIMO(time_seq, 1, 20, ele_seq, airspeed_seq, vz_seq,
                              q_seq, theta_seq, win_num=32)
 
     if show_freq_iden_plots:
@@ -95,10 +96,13 @@ def lat_dyn_SIMO(iter, show_freq_iden_plots=False):
             Xele, Zele, Mele]
     lat_dyn_state_space = StateSpaceModel(M, F, G, H0, H1, syms)
 
-    ssm_iden = StateSpaceIdenSIMO(freq, Hs, coherens, max_sample_time=iter, accept_J=30)
+    ssm_iden = StateSpaceIdenSIMO(freq, Hs, coherens, max_sample_time=iter, accept_J=30,
+                                  enable_debug_plot=True,y_names=["u","v","q",r"$\theta$"])
     ssm_iden.estimate(lat_dyn_state_space, syms, constant_defines={})
+    # ssm_iden.draw_freq_res()
 
 
 if __name__ == "__main__":
-    lat_dyn_SIMO(10)
-
+    # plt.rc('text', usetex=True)
+    sp.init_printing()
+    lat_dyn_SIMO(10, show_freq_iden_plots=False)

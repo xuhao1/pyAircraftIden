@@ -40,3 +40,47 @@
 #             Zv, Zq, Za,
 #             Mv, Ma, Mq,
 #             Xele, Mele]
+
+
+def lat_dyn_uw():
+    # X = [u,w,q,th]
+    Xwdot, Zwdot, Mwdot = sp.symbols('Xwdot Zwdot Mwdot')
+
+    M = sp.Matrix([[1, -Xwdot, 0, 0],
+                   [0, 1 - Zwdot, 0, 0],
+                   [0, -Mwdot, 1, 0],
+                   [0, 0, 0, 1]])
+
+    g = 9.78
+    Xu, Xw, Xq, W0, th0 = sp.symbols('Xu Xw Xq W0 th0')
+    Zu, Zw, Zq, U0 = sp.symbols('Zu Zw Zq U0')
+    Mu, Mw, Mq = sp.symbols('Mu Mw Mq')
+
+    F = sp.Matrix([[Xu, Xw, Xq - W0, -g * sp.cos(th0)],
+                   [Zu, Zw, Zq + U0, -g * sp.sin(th0)],
+                   [Mu, Mw, Mq, 0],
+                   [0, 0, 1, 0]])
+
+    Xele, Zele, Mele = sp.symbols('Xele,Zele,Mele')
+    G = sp.Matrix([[Xele],
+                   [Zele],
+                   [Mele],
+                   [0]])
+
+    # direct using u w q th for y
+    H0 = sp.Matrix([[1, 0, 0, 0],
+                    [0, 1, 0, 0],
+                    [0, 0, 1, 0],
+                    [0, 0, 0, 1]])
+
+    H1 = sp.Matrix.zeros(4, 4)
+
+    syms = [Xwdot, Zwdot, Mwdot,
+            Xu, Xw, Xq, W0, th0,
+            Zu, Zw, Zq, U0,
+            Mu, Mw, Mq,
+            Xele, Zele, Mele]
+
+
+
+    # V0, al0]
