@@ -27,8 +27,10 @@ class StateSpaceModel(object):
 
         self.pro_calc()
 
-        self.new_param_raw_defines = dict()
-        self.new_param_raw_pos = dict()
+        self.new_params_raw_defines = dict()
+        self.new_params_raw_pos = dict()
+        self.new_params_list = list()
+        self.new_params_defs_list = list()
         pass
 
     def check_dims(self):
@@ -98,8 +100,21 @@ class StateSpaceModel(object):
         print("new A {} B {}".format(self.A_converted, self.B_converted))
         print("new H0 {} H1 {}".format(self.H0_converted, self.H1_converted))
 
+        # self.solve_params_from_newparams()
+
+    def solve_params_from_newparams(self,x):
+        equs = []
+        assert self.new_params_defs_list.__len__() == self.new_params_list.__len__()
+        for i in range(self.new_params_defs_list.__len__()):
+            equs.append(self.new_params_defs_list[i] - x[i])
+        print("Solving equs {}".format(equs))
+        print("Unknown {}".format(self.syms))
+        solvs = sp.solve(equs, tuple(self.syms))
+        print("solves",solvs)
+        return solvs
+
     def get_new_params(self):
-        return self.new_param_raw_defines.keys()
+        return self.new_params_list
 
     def determine_unknown_from_mat(self, mat, matname):
         m, n = mat.shape
@@ -111,8 +126,10 @@ class StateSpaceModel(object):
                     print("{} {} {} unkown : {}".format(matname, i, j, element))
                     new_param_name = "{}_{}_{}".format(matname, i, j)
                     new_param = sp.symbols(new_param_name)
-                    self.new_param_raw_defines[new_param] = element
-                    self.new_param_raw_pos[new_param] = (matname, i, j)
+                    self.new_params_raw_defines[new_param] = element
+                    self.new_params_list.append(new_param)
+                    self.new_params_defs_list.append(element)
+                    self.new_params_raw_pos[new_param] = (matname, i, j)
                     mat[i, j] = new_param
                 else:
                     matnew[i, j] = element
@@ -141,7 +158,7 @@ class StateSpaceModel(object):
             for sym in sym_subs:
                 mat_process = None
                 v = sym_subs[sym]
-                (mn, i, j) = self.new_param_raw_pos[sym]
+                (mn, i, j) = self.new_params_raw_pos[sym]
                 if mn == "A":
                     mat_process = self.A_numeric
                 elif mn == "B":
@@ -247,7 +264,12 @@ class StateSpaceIdenSIMO(object):
                 J_min = J
                 if J_min < self.accept_J:
                     break
+        ssm.solve_params_from_newparams(x)
         return J_min, x
+
+    # def solving_x_to_params(self,x):
+    #     self.
+    #     pass
 
     def solve(self, ssm):
         f = lambda x: self.cost_func(ssm, x)
@@ -269,7 +291,7 @@ class StateSpaceIdenSIMO(object):
         for i in range(self.x_dims):
             sym = self.x_syms[i]
             # Eval sym value from ssm
-            sym_def = ssm.new_param_raw_defines[sym]
+            sym_def = ssm.new_params_raw_defines[sym]
             v = sym_def.evalf(subs=subs)
             # print("new sym {} symdef {} vinit {}".format(sym, sym_def, v))
             x0[i] = v
@@ -383,15 +405,15 @@ def lat_dyn_example(iter):
     g = 9.78
     Xv, Xtv, Xa, al0 = sp.symbols('Xv Xtv Xa al0')
     Zv, Zv, Zq, Za = sp.symbols("Zv Zv Zq Za")
-    Mv, Mtv, Ma, Mq = sp.symbols("Mv Mtv Ma Mq")
+    Mv, Ma, Mq = sp.symbols("Mv Ma Mq")
 
     al0 = 0.015464836009954524
     F = sp.Matrix([[Xv + Xtv * sp.cos(al0), Xa, -g, 0],
                    [Zv - Xtv * sp.sin(al0), Za, 0, V0 + Zq],
                    [0, 0, 0, 1],
-                   [Mv + Mtv, Ma, 0, Mq]])
+                   [Mv, Ma, 0, Mq]])
 
-    Xele, Zele, Mele = sp.symbols('Xele,Zele,Mele')
+    Xele,  Mele = sp.symbols('Xele,Mele')
     G = sp.Matrix([[Xele * sp.cos(al0)],
                    [0],
                    [0],
@@ -405,12 +427,12 @@ def lat_dyn_example(iter):
 
     H1 = sp.Matrix.zeros(4, 4)
 
-    syms = [Zaldot, Maldot, V0,
+    syms = [Zaldot, Maldot,
             Xv, Xtv, Xa,
-            Zv, Zv, Zq, Za,
-            Mv, Mtv, Ma, Mq,
-            Xele, Zele, Mele,
-            V0, al0]
+            Zv, Zq, Za,
+            Mv, Ma, Mq,
+            Xele, Mele]
+            # V0, al0]
     lat_dyn_state_space = StateSpaceModel(M, F, G, H0, H1, syms)
 
     ssm_iden = StateSpaceIdenSIMO(freq, Hs, coherens, max_sample_time=iter)
