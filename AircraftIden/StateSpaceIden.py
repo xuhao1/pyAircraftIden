@@ -5,7 +5,7 @@ import random
 from AircraftIden import FreqIdenSIMO
 import matplotlib.pyplot as plt
 from scipy.optimize import minimize
-
+from multiprocessing import Pool
 
 class StateSpaceModel(object):
     def __init__(self, M: sp.Matrix, F: sp.Matrix, G: sp.Matrix, H0: sp.Matrix, H1: sp.Matrix, syms: list):
@@ -192,7 +192,7 @@ class StateSpaceModel(object):
 
 
 class StateSpaceIdenSIMO(object):
-    def __init__(self, freq, Hs, coherens, nw=20, enable_debug_plot=False, max_sample_time=100):
+    def __init__(self, freq, Hs, coherens, nw=20, enable_debug_plot=False, max_sample_time=10,accept_J = 50):
         self.freq = freq
         self.Hs = Hs
         self.wg = 1.0
@@ -202,7 +202,7 @@ class StateSpaceIdenSIMO(object):
         self.coherens = coherens
         self.nw = nw
         self.max_sample_time = max_sample_time
-        self.accept_J = 100
+        self.accept_J = accept_J
 
     def cost_func(self, ssm: StateSpaceModel, x):
         sym_sub = dict()
@@ -258,6 +258,9 @@ class StateSpaceIdenSIMO(object):
         x = None
         for i in range(self.max_sample_time):
             x_tmp, J = self.solve(ssm)
+            x_syms = ssm.solve_params_from_newparams(x_tmp)
+            # print("Found res J:{} x {} sampled NUM {}".format(J, x_tmp, i))
+            # print(x_syms)
             if J < J_min:
                 # print("Found new better res J:{} x {} sampled NUM {}".format(J, x_tmp, i))
                 print("Found new better res J:{} sampled NUM {}".format(J, i))
@@ -362,146 +365,10 @@ def lat_dyn_uw():
             Xele, Zele, Mele]
 
 
-def lat_aoa():
-    # X = [V,aoa,the,q]
 
-    V0 = 52.7
-    Zaldot, Maldot, V0 = sp.symbols('Zaldot Maldot V0')
-
-    M = sp.Matrix([[1, 0, 0, 0],
-                   [0, V0 - Zaldot, 0, 0],
-                   [0, 0, 1, 0],
-                   [0, -Maldot, 0, 1]])
-
-    g = 9.78
-    Xv, Xtv, Xa, al0 = sp.symbols('Xv Xtv Xa al0')
-    Zv, Zv, Zq, Za = sp.symbols("Zv Zv Zq Za")
-    Mv, Ma, Mq = sp.symbols("Mv Ma Mq")
-
-    al0 = 0.015464836009954524
-    F = sp.Matrix([[Xv + Xtv * sp.cos(al0), Xa, -g, 0],
-                   [Zv - Xtv * sp.sin(al0), Za, 0, V0 + Zq],
-                   [0, 0, 0, 1],
-                   [Mv, Ma, 0, Mq]])
-
-    Xele, Mele = sp.symbols('Xele,Mele')
-    G = sp.Matrix([[Xele * sp.cos(al0)],
-                   [0],
-                   [0],
-                   [Mele]])
-
-    # direct using u w q th for y
-    H0 = sp.Matrix([[1, 0, 0, 0],
-                    [0, 1, 0, 0],
-                    [0, 0, 1, 0],
-                    [0, 0, 0, 1]])
-
-    H1 = sp.Matrix.zeros(4, 4)
-
-    syms = [Zaldot, Maldot,
-            Xv, Xtv, Xa,
-            Zv, Zq, Za,
-            Mv, Ma, Mq,
-            Xele, Mele]
     # V0, al0]
 
 
-def lat_dyn_example(iter):
-    # save_data_list = ["running_time", "yoke_pitch",
-    #                  "theta", "airspeed", "q", "aoa", "VVI", "alt", "vx_body", "vy_body", "vz_body"]
-
-    arr = np.load("../data/sweep_data_2017_11_16_11_47.npy")
-    time_seq_source = arr[:, 0]
-    ele_seq_source = arr[:, 1]
-    q_seq_source = arr[:, 4]
-    vvi_seq_source = arr[:, 6]
-    theta_seq_source = arr[:, 2] / 180 * math.pi
-    airspeed_seq_source = arr[:, 3]
-    aoa_seq_source = arr[:, 5] / 180 * math.pi
-
-    vx_seq = arr[:, 10]
-    vz_seq = arr[:, 9]
-    vy_seq = arr[:, 8]
-
-    # X = [u,w,q,th]
-
-    plt.figure("source vx")
-    plt.plot(time_seq_source, vx_seq, label='vx')
-    plt.legend()
-
-    plt.figure("source vy")
-    plt.plot(time_seq_source, vy_seq, label='vy')
-    plt.legend()
-
-    plt.figure("source vz")
-    plt.plot(time_seq_source, vz_seq, label='vz')
-    plt.legend()
-
-    plt.figure("q theta")
-    plt.plot(time_seq_source, q_seq_source, label='q')
-    plt.plot(time_seq_source, theta_seq_source, label='theta')
-    plt.legend()
-    # plt.show()
-    simo_iden = FreqIdenSIMO(time_seq_source, 0.5, 50, ele_seq_source, airspeed_seq_source, vz_seq,
-                             q_seq_source, theta_seq_source, win_num=32)
-
-    plt.figure("Ele->Airspeed")
-    simo_iden.plt_bode_plot(0)
-    plt.figure("Ele->Vz")
-    simo_iden.plt_bode_plot(1)
-    plt.figure("Ele->Q")
-    simo_iden.plt_bode_plot(2)
-    plt.figure("Ele->Th")
-    simo_iden.plt_bode_plot(3)
-
-    plt.pause(0.5)
-
-    freq, Hs, coherens = simo_iden.get_all_idens()
-
-    Xwdot, Zwdot, Mwdot = sp.symbols('Xwdot Zwdot Mwdot')
-
-    M = sp.Matrix([[1, -Xwdot, 0, 0],
-                   [0, 1 - Zwdot, 0, 0],
-                   [0, -Mwdot, 1, 0],
-                   [0, 0, 0, 1]])
-
-    g = 9.78
-    th0 = theta_seq_source[0]
-    U0 = vx_seq[0]
-    W0 = vz_seq[0]
-    print("Trim theta {} U0 {} W0 {}".format(th0, U0, W0))
-    Xu, Xw, Xq= sp.symbols('Xu Xw Xq')
-    Zu, Zw, Zq= sp.symbols('Zu Zw Zq')
-    Mu, Mw, Mq = sp.symbols('Mu Mw Mq')
-
-    F = sp.Matrix([[Xu, Xw, Xq - W0, -g * sp.cos(th0)],
-                   [Zu, Zw, Zq + U0, -g * sp.sin(th0)],
-                   [Mu, Mw, Mq, 0],
-                   [0, 0, 1, 0]])
-
-    Xele, Zele, Mele = sp.symbols('Xele,Zele,Mele')
-    G = sp.Matrix([[Xele],
-                   [Zele],
-                   [Mele],
-                   [0]])
-
-    # direct using u w q th for y
-    H0 = sp.Matrix([[1, 0, 0, 0],
-                    [0, 1, 0, 0],
-                    [0, 0, 1, 0],
-                    [0, 0, 0, 1]])
-
-    H1 = sp.Matrix.zeros(4, 4)
-
-    syms = [Xwdot, Zwdot, Mwdot,
-            Xu, Xw, Xq,
-            Zu, Zw, Zq,
-            Mu, Mw, Mq,
-            Xele, Zele, Mele]
-    lat_dyn_state_space = StateSpaceModel(M, F, G, H0, H1, syms)
-
-    ssm_iden = StateSpaceIdenSIMO(freq, Hs, coherens, max_sample_time=iter)
-    ssm_iden.estimate(lat_dyn_state_space, syms, constant_defines={})
 
 
 def test_pure_symbloic():
@@ -565,5 +432,4 @@ def test_pure_symbloic():
 
 
 if __name__ == "__main__":
-    lat_dyn_example(10)
-    # test_pure_symbloic()
+    test_pure_symbloic()
