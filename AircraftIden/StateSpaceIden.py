@@ -307,7 +307,7 @@ class StateSpaceIdenSIMO(object):
 
     def draw_freq_res(self, ssm: StateSpaceModel, x):
         if self.fig is not None:
-            self.fig.close()
+            plt.close(self.fig)
 
         self.fig, self.axs = plt.subplots(self.y_dims+1, 1, sharey=True)
         fig, axs = self.fig, self.axs

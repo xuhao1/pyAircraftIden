@@ -26,7 +26,8 @@ def lat_dyn_SIMO(iter, show_freq_iden_plots=False):
 
     # X = [u,w,q,th]
     if show_freq_iden_plots:
-        plt.figure("source data")
+        fig = plt.figure("source data")
+        fig.set_size_inches(18,10)
         plt.subplot(411)
         plt.plot(time_seq, vx_seq, label='vx')
         plt.subplot(412)
@@ -36,10 +37,11 @@ def lat_dyn_SIMO(iter, show_freq_iden_plots=False):
         plt.subplot(414)
         plt.plot(time_seq, q_seq, label='q')
         plt.plot(time_seq, theta_seq, label='theta')
+
         plt.legend()
     # plt.show()
     simo_iden = FreqIdenSIMO(time_seq, 1, 20, ele_seq, airspeed_seq, vz_seq,
-                             q_seq, theta_seq, win_num=32)
+                             q_seq, theta_seq, win_num=40)
 
     if show_freq_iden_plots:
         plt.figure("Ele->Airspeed")
@@ -96,7 +98,7 @@ def lat_dyn_SIMO(iter, show_freq_iden_plots=False):
             Xele, Zele, Mele]
     lat_dyn_state_space = StateSpaceModel(M, F, G, H0, H1, syms)
 
-    ssm_iden = StateSpaceIdenSIMO(freq, Hs, coherens, max_sample_time=iter, accept_J=30,
+    ssm_iden = StateSpaceIdenSIMO(freq, Hs, coherens, max_sample_time=iter, accept_J=20,
                                   enable_debug_plot=True,y_names=["u","v","q",r"$\theta$"])
     ssm_iden.estimate(lat_dyn_state_space, syms, constant_defines={})
     # ssm_iden.draw_freq_res()
