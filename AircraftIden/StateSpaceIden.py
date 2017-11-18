@@ -277,13 +277,10 @@ class StateSpaceIdenSIMO(object):
             if J < J_min:
                 print("Found new better res J:{} sampled NUM {}".format(J, i))
                 x = x_tmp.copy()
+                J_min = J
                 if self.enable_debug_plot:
                     self.draw_freq_res(ssm, x)
-                    if J_min == J_min_max:
-                        plt.pause(1.0)
-                    else:
-                        plt.pause(0.1)
-                J_min = J
+                    plt.pause(1.0)
                 if J_min < self.accept_J:
                     break
         x_syms = ssm.solve_params_from_newparams(x)

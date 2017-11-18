@@ -12,7 +12,7 @@ def lat_dyn_SIMO(iter, show_freq_iden_plots=False):
     #                  "theta", "airspeed", "q", "aoa", "VVI", "alt", "vx_body", "vy_body", "vz_body"]
 
     # arr = np.load("../data/sweep_data_2017_11_16_11_47.npy")
-    arr = np.load("../../XPlaneResearch/data/sweep_data_2017_11_16_22_27.npy")
+    arr = np.load("../../XPlaneResearch/data/sweep_data_2017_11_18_17_19.npy")
     time_seq = arr[:, 0]
     ele_seq = arr[:, 1]
     q_seq = arr[:, 4]
@@ -25,56 +25,57 @@ def lat_dyn_SIMO(iter, show_freq_iden_plots=False):
     vy_seq = arr[:, 9]
     vz_seq = arr[:, 10]
 
-    # ax_seq = arr[:, 11]
+    ax_source = arr[:, 11].copy()
+    ax_seq = arr[:, 11]  # + np.sin(theta_seq) * 9.8
     # ay_seq = arr[:, 12]
-    # az_seq = arr[:, 13]
-
-    ax_seq = - arr[:, 13]
-    # ay_seq = arr[:, 12]
-    az_seq = - arr[:, 11]
+    az_seq = arr[:, 13]
 
     # X = [u,w,q,th]
     # Y = [w,q,th,ax,az]
-    #Note ax ay don't contain gravity acc
+    # Note ax ay contain gravity acc
 
-    # plt.plot(time_seq[0:-1],np.diff(vx_seq)*20,label = "diff vx")
-    plt.plot(time_seq,ax_seq,label = "ax")
-    plt.plot(time_seq,ele_seq,label = "ele")
-    plt.legend()
-    # plt.show()
     if show_freq_iden_plots:
         fig = plt.figure("source data")
         fig.set_size_inches(18, 10)
         plt.subplot(311)
-        plt.plot(time_seq, ax_seq, label='ax')
-        plt.plot(time_seq, aoa_seq*180/math.pi, label='aoa')
-        plt.plot(time_seq, az_seq, label='az')
+        plt.plot(time_seq, aoa_seq * 180 / math.pi, label='aoa')
+        plt.plot(time_seq, theta_seq * 180 / math.pi, label='theta')
+        plt.plot(time_seq, az_seq - az_seq[0], label='az - {:2.1f}'.format(az_seq[0]))
         plt.legend()
 
         plt.subplot(312)
         plt.plot(time_seq, vz_seq, label='vz')
-        plt.plot(time_seq, vx_seq-vx_seq[0], label='vx')
+        plt.plot(time_seq, vx_seq - vx_seq[0], label='vx - {:3.1f}'.format(vx_seq[0]))
         plt.legend()
         plt.subplot(313)
-        plt.plot(time_seq, q_seq, label='q')
-        plt.plot(time_seq, theta_seq, label='theta')
+        # plt.plot(time_seq, q_seq, label='q')
+        # plt.plot(time_seq, theta_seq*57, label='theta')
+        plt.plot(time_seq, ax_seq, label='ax')
+        plt.plot(time_seq, - np.sin(theta_seq) * 9.8, label='ax_by_theta')
+        plt.plot(time_seq, ax_source, label='axsource')
+        plt.plot(time_seq, aoa_seq * 50, label='aoa')
+        plt.grid(which='both')
+        # plt.plot(time_seq, ele_seq, label="ele")
 
         plt.legend()
-    #plt.show()
-    simo_iden = FreqIdenSIMO(time_seq, 1, 20, ele_seq, vz_seq,
-                             q_seq, theta_seq, ax_seq, az_seq, win_num=40)
+
+    simo_iden = FreqIdenSIMO(time_seq, 1, 20, ele_seq, vx_seq, vz_seq,
+                             q_seq, theta_seq, ax_seq, az_seq, win_num=32)
 
     if show_freq_iden_plots:
-        plt.figure("Ele->W(vz)")
+        plt.figure("Ele->Vx")
         simo_iden.plt_bode_plot(0)
-        plt.figure("Ele->Q")
+        plt.figure("Ele->W(vz)")
         simo_iden.plt_bode_plot(1)
-        plt.figure("Ele->Theta")
+        plt.figure("Ele->Q")
         simo_iden.plt_bode_plot(2)
-        plt.figure("Ele->Ax")
+        plt.figure("Ele->Theta")
         simo_iden.plt_bode_plot(3)
-        plt.figure("Ele->Az")
+        plt.figure("Ele->Ax")
         simo_iden.plt_bode_plot(4)
+        plt.figure("Ele->Az")
+        simo_iden.plt_bode_plot(5)
+
         # plt.show()
 
     freq, Hs, coherens = simo_iden.get_all_idens()
@@ -107,17 +108,22 @@ def lat_dyn_SIMO(iter, show_freq_iden_plots=False):
                    [0]])
 
     # direct using u w q th for y
-    H0 = sp.Matrix([[0, 1, 0, 0],
+    H0 = sp.Matrix([[1, 0, 0, 0],
+                    [0, 1, 0, 0],
                     [0, 0, 1, 0],
                     [0, 0, 0, 1],
-                    [0, 0, W0, 0],
-                    [0, 0, -U0, 0]])
+                    [0, 0, W0, g * math.cos(th0)],
+                    [0, 0, -U0, g * math.sin(th0)]]
+                   )
 
-    H1 = sp.Matrix([[0, 0, 0, 0],
-                    [0, 0, 0, 0],
-                    [0, 0, 0, 0],
-                    [1, 0, 0, 0],
-                    [0, 1, 0, 0]])
+    H1 = sp.Matrix([
+        [0, 0, 0, 0],
+        [0, 0, 0, 0],
+        [0, 0, 0, 0],
+        [0, 0, 0, 0],
+        [1, 0, 0, 0],
+        [0, 1, 0, 0],
+    ])
 
     syms = [Xwdot, Zwdot, Mwdot,
             Xu, Xw, Xq,
@@ -127,7 +133,7 @@ def lat_dyn_SIMO(iter, show_freq_iden_plots=False):
     lat_dyn_state_space = StateSpaceModel(M, F, G, H0, H1, syms)
 
     ssm_iden = StateSpaceIdenSIMO(freq, Hs, coherens, max_sample_time=iter, accept_J=20,
-                                  enable_debug_plot=True, y_names=["w", "q", r"$\theta$",r"a_x",r"a_z"])
+                                  enable_debug_plot=True, y_names=[r"v_x", "w", "q", r"$\theta$", r"a_x", r"a_z"])
     ssm_iden.estimate(lat_dyn_state_space, syms, constant_defines={})
     # ssm_iden.draw_freq_res()
 
