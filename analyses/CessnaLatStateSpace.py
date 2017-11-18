@@ -132,7 +132,7 @@ def lat_dyn_SIMO(iter, show_freq_iden_plots=False):
             Xele, Zele, Mele]
     lat_dyn_state_space = StateSpaceModel(M, F, G, H0, H1, syms)
 
-    ssm_iden = StateSpaceIdenSIMO(freq, Hs, coherens, max_sample_time=iter, accept_J=20,
+    ssm_iden = StateSpaceIdenSIMO(freq, Hs, coherens, max_sample_times=iter, accept_J=20,
                                   enable_debug_plot=True, y_names=[r"v_x", "w", "q", r"$\theta$", r"a_x", r"a_z"])
     ssm_iden.estimate(lat_dyn_state_space, syms, constant_defines={})
     # ssm_iden.draw_freq_res()
@@ -141,4 +141,4 @@ def lat_dyn_SIMO(iter, show_freq_iden_plots=False):
 if __name__ == "__main__":
     # plt.rc('text', usetex=True)
     sp.init_printing()
-    lat_dyn_SIMO(10, show_freq_iden_plots=True)
+    lat_dyn_SIMO(32, show_freq_iden_plots=True)

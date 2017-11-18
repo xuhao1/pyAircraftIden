@@ -6,6 +6,7 @@ from AircraftIden import FreqIdenSIMO
 import matplotlib.pyplot as plt
 from scipy.optimize import minimize
 import copy
+import multiprocessing
 
 
 class StateSpaceModel(object):
@@ -77,6 +78,7 @@ class StateSpaceModel(object):
         M_inv = self.M ** -1
         self.A = M_inv * self.F
         self.B = M_inv * self.G
+
     def show_formula(self):
         a_mat = sp.latex(self.A)
         fig = plt.figure("Formula")
@@ -85,6 +87,7 @@ class StateSpaceModel(object):
 
         plt.pause(0.1)
         pass
+
     def load_constant_defines(self, constant_syms):
         A = self.A.evalf(subs=constant_syms)
         B = self.B.evalf(subs=constant_syms)
@@ -152,54 +155,51 @@ class StateSpaceModel(object):
 
     def calucate_transfer_matrix_at_s(self, sym_subs, s, using_converted=False):
         # sym_subs = dict()
-        A_num = None
-        B_num = None
-        H0_num = None
-        H1_num = None
+        A_num = self.A_numeric.copy()
+        B_num = self.B_numeric.copy()
+        H0_num = self.H0_numeric.copy()
+        H1_num = self.H1_numeric.copy()
         if not using_converted:
             A_num = sp.matrix2numpy(self.A.evalf(subs=sym_subs), dtype=np.complex)
             B_num = sp.matrix2numpy(self.B.evalf(subs=sym_subs), dtype=np.complex)
             H0_num = sp.matrix2numpy(self.H0.evalf(subs=sym_subs), dtype=np.complex)
             H1_num = sp.matrix2numpy(self.H1.evalf(subs=sym_subs), dtype=np.complex)
         else:
-            for sym in sym_subs:
+            for sym, v in sym_subs.items():
                 mat_process = None
-                v = sym_subs[sym]
+                # v = sym_subs[sym]
                 (mn, i, j) = self.new_params_raw_pos[sym]
                 if mn == "A":
-                    mat_process = self.A_numeric
+                    mat_process = A_num
                 elif mn == "B":
-                    mat_process = self.B_numeric
+                    mat_process = B_num
                 elif mn == "H0":
-                    mat_process = self.H0_numeric
+                    mat_process = H0_num
                 elif mn == "H1":
-                    mat_process = self.H1_numeric
+                    mat_process = H1_num
                 assert mat_process is not None, "Mat name {} illegal".format(mn)
                 mat_process[i][j] = v
-            A_num = self.A_numeric
-            B_num = self.B_numeric
-            H0_num = self.H0_numeric
-            H1_num = self.H1_numeric
 
         TT = np.linalg.inv((s * np.eye(self.dims) - A_num))
         Tpart2 = np.dot(TT, B_num)
-        self.Tnum = np.dot((H0_num + s * H1_num), Tpart2)
+        Tnum = np.dot((H0_num + s * H1_num), Tpart2)
+        return Tnum
 
     def get_transfer_func(self, y_index, u_index):
         # Must be run after cal
         assert self.T is not None, "Must run calucate_transfer_matrix first"
         return self.T[y_index, u_index]
 
-    def get_amp_pha_from_matrix(self, u_index, y_index):
-        h = self.Tnum[y_index, u_index]
-        h = complex(h)
+    @staticmethod
+    def get_amp_pha_from_matrix(Tnum, u_index, y_index):
+        h = Tnum[y_index, u_index]
         amp = 20 * np.log10(np.absolute(h))
         pha = np.arctan2(h.imag, h.real) * 180 / math.pi
         return amp, pha
 
 
 class StateSpaceIdenSIMO(object):
-    def __init__(self, freq, Hs, coherens, nw=20, enable_debug_plot=False, max_sample_time=10, accept_J=50,
+    def __init__(self, freq, Hs, coherens, nw=20, enable_debug_plot=False, max_sample_times=10, accept_J=50,
                  y_names=None):
         self.freq = freq
         self.Hs = Hs
@@ -209,7 +209,7 @@ class StateSpaceIdenSIMO(object):
         self.enable_debug_plot = enable_debug_plot
         self.coherens = coherens
         self.nw = nw
-        self.max_sample_time = max_sample_time
+        self.max_sample_times = max_sample_times
         self.accept_J = accept_J
         self.x_dims = 0
         self.x_syms = []
@@ -226,11 +226,11 @@ class StateSpaceIdenSIMO(object):
 
         def cost_func_at_omg_ptr(omg_ptr):
             omg = self.freq[omg_ptr]
-            ssm.calucate_transfer_matrix_at_s(sym_sub, omg * 1j, using_converted=True)
+            Tnum = ssm.calucate_transfer_matrix_at_s(sym_sub, omg * 1j, using_converted=True)
 
             def chn_cost_func(y_index):
                 # amp, pha = ssm.get_amp_pha_from_trans(trans, omg)
-                amp, pha = ssm.get_amp_pha_from_matrix(0, y_index)
+                amp, pha = StateSpaceModel.get_amp_pha_from_matrix(Tnum, 0, y_index)
                 h = self.Hs[y_index][omg_ptr]
                 h_amp = 20 * np.log10(np.absolute(h))
                 h_pha = np.arctan2(h.imag, h.real) * 180 / math.pi
@@ -269,33 +269,36 @@ class StateSpaceIdenSIMO(object):
         self.x_dims = len(self.x_syms)
         print("Will estimate num {} {}".format(self.x_syms.__len__(), self.x_syms))
 
-        J_min_max = 10000
-        J_min = J_min_max
-        x = None
-        for i in range(self.max_sample_time):
-            x_tmp, J = self.solve(ssm)
-            if J < J_min:
-                print("Found new better res J:{} sampled NUM {}".format(J, i))
-                x = x_tmp.copy()
-                J_min = J
-                if self.enable_debug_plot:
-                    self.draw_freq_res(ssm, x)
-                    plt.pause(1.0)
-                if J_min < self.accept_J:
-                    break
+        J, x = self.parallel_solve(ssm)
+        self.draw_freq_res(ssm, x)
         x_syms = ssm.solve_params_from_newparams(x)
         print("syms {}".format(x_syms))
         plt.show()
-        return J_min, x_syms
+        return J, x_syms
 
-    def solve(self, ssm):
+    def parallel_solve(self, ssm):
+        self.ssm = ssm
+        pool = multiprocessing.Pool()
+        result = pool.map(self.solve, range(self.max_sample_times))
+        J_min = 100000
+        x = None
+        for J, xtmp in result:
+            if J < J_min:
+                J_min = J
+                x = xtmp
+        return J_min, x
+
+    def solve(self, id=0):
+        ssm = copy.deepcopy(self.ssm)
+        print("Solve id {}".format(id))
         f = lambda x: self.cost_func(ssm, x)
         x0 = self.setup_initvals(ssm)
         # return x0, 0
         ret = minimize(f, x0)
         x = ret.x.copy()
         J = ret.fun
-        return x, J
+        print("exit id {} J:{}".format(id, J))
+        return J, x
 
     def get_H_from_s_trans(self, trans):
         trans = sp.simplify(trans)
@@ -319,9 +322,9 @@ class StateSpaceIdenSIMO(object):
         for omg_ptr in range(self.freq.__len__()):
             u_index = 0
             omg = self.freq[omg_ptr]
-            ssm.calucate_transfer_matrix_at_s(sym_sub, omg * 1j, using_converted=True)
+            Tnum = ssm.calucate_transfer_matrix_at_s(sym_sub, omg * 1j, using_converted=True)
             for y_index in range(self.y_dims):
-                h = ssm.Tnum[y_index, u_index]
+                h = Tnum[y_index, u_index]
                 h = complex(h)
                 self.Hest[y_index][omg_ptr] = h
 
