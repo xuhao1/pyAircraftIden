@@ -2,6 +2,7 @@ import sympy as sp
 import numpy as np
 import matplotlib.pyplot as plt
 import math
+import control
 
 
 class StateSpaceParamModel(object):
@@ -99,7 +100,7 @@ class StateSpaceParamModel(object):
         self.H0_numeric = self.determine_unknown_from_mat(self.H0_converted, 'H0')
         self.H1_numeric = self.determine_unknown_from_mat(self.H1_converted, 'H1')
 
-        self.show_formula()
+        # self.show_formula()
         # print("new A {} B {}".format(self.A_converted, self.B_converted))
         # print("new H0 {} H1 {}".format(self.H0_converted, self.H1_converted))
 
@@ -153,13 +154,6 @@ class StateSpaceParamModel(object):
         assert self.T is not None, "Must run calucate_transfer_matrix first"
         return self.T[y_index, u_index]
 
-    @staticmethod
-    def get_amp_pha_from_matrix(Tnum, u_index, y_index):
-        h = Tnum[y_index, u_index]
-        amp = 20 * np.log10(np.absolute(h))
-        pha = np.arctan2(h.imag, h.real) * 180 / math.pi
-        return amp, pha
-
     def get_ssm_by_syms(self, sym_subs, using_converted=False):
         A_num = self.A_numeric.copy()
         B_num = self.B_numeric.copy()
@@ -197,6 +191,8 @@ class StateSpaceModel():
         self.H0 = H0_num
         self.H1 = H1_num
         self.check_dims()
+        D = np.zeros((self.y_dims, self.u_dims))
+        self.ssm = control.StateSpace(self.A, self.B, self.H0, D)
 
     def calucate_transfer_matrix_at_omg(self, omg):
         s = omg * 1J
@@ -227,3 +223,24 @@ class StateSpaceModel():
         assert n == self.dims and m == self.y_dims, 'Error on H0 shape needs {1}x{0} got {2}x{3}'.format(self.dims,
                                                                                                          self.y_dims, m,
                                                                                                          n)
+
+    @staticmethod
+    def get_amp_pha_from_matrix(Tnum, u_index, y_index):
+        h = Tnum[y_index, u_index]
+        amp = 20 * np.log10(np.absolute(h))
+        pha = np.arctan2(h.imag, h.real) * 180 / math.pi
+        return amp, pha
+
+    def response_by_u_seq(self, t_seq, u_seq, X0):
+        sample_rate = (t_seq[-1] - t_seq[0])
+        T, y_out, x_out = control.forced_response(self.ssm, t_seq, u_seq, X0)
+        x_out = np.transpose(x_out)
+        y_out = np.transpose(y_out)
+
+        x_diff = np.diff(x_out,axis=0)
+        x_diff_tail = np.zeros((1,self.dims))
+        x_dot = np.concatenate((x_diff, x_diff_tail), axis=0) * sample_rate
+
+        yout_add = np.apply_along_axis(lambda xdot: np.dot(self.H1, xdot), 1, x_dot)
+        y_out = y_out + yout_add
+        return t_seq, y_out

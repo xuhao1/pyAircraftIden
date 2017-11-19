@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 from scipy.optimize import minimize
 import copy
 import multiprocessing
-from AircraftIden.StateSpaceParamModel import StateSpaceParamModel
+from AircraftIden.StateSpaceParamModel import StateSpaceParamModel, StateSpaceModel
 
 
 class StateSpaceIdenSIMO(object):
@@ -28,6 +28,9 @@ class StateSpaceIdenSIMO(object):
         self.y_dims = len(Hs)
         self.y_names = y_names
 
+        self.x_best = None
+        self.J_min = -1
+
         self.fig = None
 
     def cost_func(self, sspm: StateSpaceParamModel, x):
@@ -43,7 +46,7 @@ class StateSpaceIdenSIMO(object):
 
             def chn_cost_func(y_index):
                 # amp, pha = sspm.get_amp_pha_from_trans(trans, omg)
-                amp, pha = StateSpaceParamModel.get_amp_pha_from_matrix(Tnum, 0, y_index)
+                amp, pha = StateSpaceModel.get_amp_pha_from_matrix(Tnum, 0, y_index)
                 h = self.Hs[y_index][omg_ptr]
                 h_amp = 20 * np.log10(np.absolute(h))
                 h_pha = np.arctan2(h.imag, h.real) * 180 / math.pi
@@ -83,11 +86,16 @@ class StateSpaceIdenSIMO(object):
         print("Will estimate num {} {}".format(self.x_syms.__len__(), self.x_syms))
 
         J, x = self.parallel_solve(sspm)
-        self.draw_freq_res(sspm, x)
         x_syms = sspm.solve_params_from_newparams(x)
         print("syms {}".format(x_syms))
-        plt.show()
-        return J, x_syms
+
+        if self.enable_debug_plot:
+            self.draw_freq_res(sspm, x)
+            plt.show()
+
+        self.x_best = x
+        self.J_min = J
+        return self.J_min, self.get_best_ssm()
 
     def parallel_solve(self, sspm):
         self.sspm = sspm
@@ -118,6 +126,11 @@ class StateSpaceIdenSIMO(object):
         omg_to_h = np.vectorize(lambda omg: complex(trans.evalf(subs={sp.symbols("s"): omg * 1J})))
         return omg_to_h(self.freq)
 
+    def get_best_ssm(self) -> StateSpaceModel:
+        assert self.x_best is not None, "You must estimate first"
+        sym_sub = dict(zip(self.x_syms, self.x_best))
+        return self.sspm.get_ssm_by_syms(sym_sub, using_converted=True)
+
     def draw_freq_res(self, sspm: StateSpaceParamModel, x):
         if self.fig is not None:
             plt.close(self.fig)
@@ -126,26 +139,25 @@ class StateSpaceIdenSIMO(object):
         fig, axs = self.fig, self.axs
         fig.set_size_inches(25, 15)
         fig.canvas.set_window_title('FreqRes vs est')
-        sym_sub = dict(zip(self.x_syms, x))
         fig.tight_layout()
         fig.subplots_adjust(right=0.9)
+        Hest = copy.deepcopy(self.Hs)
 
-        self.Hest = copy.deepcopy(self.Hs)
-        ssm = sspm.get_ssm_by_syms(sym_sub, using_converted=True)
+        ssm = self.get_best_ssm()
 
         for omg_ptr in range(self.freq.__len__()):
             u_index = 0
             omg = self.freq[omg_ptr]
-            Tnum = ssm.calucate_transfer_matrix_at_omg(sym_sub, omg, using_converted=True)
+            Tnum = ssm.calucate_transfer_matrix_at_omg(omg)
             for y_index in range(self.y_dims):
                 h = Tnum[y_index, u_index]
                 h = complex(h)
-                self.Hest[y_index][omg_ptr] = h
+                Hest[y_index][omg_ptr] = h
 
         for y_index in range(self.y_dims):
             # trans = sspm.get_transfer_func(y_index, 0)
             amp0, pha0 = FreqIdenSIMO.get_amp_pha_from_h(self.Hs[y_index])
-            amp1, pha1 = FreqIdenSIMO.get_amp_pha_from_h(self.Hest[y_index])
+            amp1, pha1 = FreqIdenSIMO.get_amp_pha_from_h(Hest[y_index])
             # amp1, pha1 = amp0, pha0
             ax1 = axs[y_index]
             if self.y_names is not None:
