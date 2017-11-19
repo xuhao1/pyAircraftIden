@@ -3,7 +3,7 @@ from AircraftIden import FreqIdenSIMO, TransferFunctionFit
 import numpy as np
 import matplotlib.pyplot as plt
 import math
-from AircraftIden.StateSpaceIden import StateSpaceIdenSIMO, StateSpaceModel
+from AircraftIden.StateSpaceIden import StateSpaceIdenSIMO, StateSpaceParamModel
 import sympy as sp
 
 
@@ -47,6 +47,7 @@ def lat_dyn_SIMO(iter, show_freq_iden_plots=False):
         plt.plot(time_seq, vz_seq, label='vz')
         plt.plot(time_seq, vx_seq - vx_seq[0], label='vx - {:3.1f}'.format(vx_seq[0]))
         plt.legend()
+
         plt.subplot(313)
         # plt.plot(time_seq, q_seq, label='q')
         # plt.plot(time_seq, theta_seq*57, label='theta')
@@ -112,7 +113,7 @@ def lat_dyn_SIMO(iter, show_freq_iden_plots=False):
                     [0, 1, 0, 0],
                     [0, 0, 1, 0],
                     [0, 0, 0, 1],
-                    [0, 0, W0, g * math.cos(th0)],
+                    [0, 0, W0, - g * math.cos(th0)],#Issue!!!!!!!
                     [0, 0, -U0, g * math.sin(th0)]]
                    )
 
@@ -130,7 +131,7 @@ def lat_dyn_SIMO(iter, show_freq_iden_plots=False):
             Zu, Zw, Zq,
             Mu, Mw, Mq,
             Xele, Zele, Mele]
-    lat_dyn_state_space = StateSpaceModel(M, F, G, H0, H1, syms)
+    lat_dyn_state_space = StateSpaceParamModel(M, F, G, H0, H1, syms)
 
     ssm_iden = StateSpaceIdenSIMO(freq, Hs, coherens, max_sample_times=iter, accept_J=20,
                                   enable_debug_plot=True, y_names=[r"v_x", "w", "q", r"$\theta$", r"a_x", r"a_z"])
@@ -141,4 +142,4 @@ def lat_dyn_SIMO(iter, show_freq_iden_plots=False):
 if __name__ == "__main__":
     # plt.rc('text', usetex=True)
     sp.init_printing()
-    lat_dyn_SIMO(32, show_freq_iden_plots=True)
+    lat_dyn_SIMO(23, show_freq_iden_plots=True)

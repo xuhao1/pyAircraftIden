@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 from scipy.optimize import minimize
 import copy
 import multiprocessing
-from AircraftIden.StateSpaceModel import StateSpaceModel
+from AircraftIden.StateSpaceParamModel import StateSpaceParamModel
 
 class StateSpaceIdenSIMO(object):
     def __init__(self, freq, Hs, coherens, nw=20, enable_debug_plot=False, max_sample_times=10, accept_J=50,
@@ -29,7 +29,7 @@ class StateSpaceIdenSIMO(object):
 
         self.fig = None
 
-    def cost_func(self, ssm: StateSpaceModel, x):
+    def cost_func(self, ssm: StateSpaceParamModel, x):
         sym_sub = dict()
         assert len(x) == len(self.x_syms), 'State length must be equal with x syms'
         # setup state x
@@ -41,7 +41,7 @@ class StateSpaceIdenSIMO(object):
 
             def chn_cost_func(y_index):
                 # amp, pha = ssm.get_amp_pha_from_trans(trans, omg)
-                amp, pha = StateSpaceModel.get_amp_pha_from_matrix(Tnum, 0, y_index)
+                amp, pha = StateSpaceParamModel.get_amp_pha_from_matrix(Tnum, 0, y_index)
                 h = self.Hs[y_index][omg_ptr]
                 h_amp = 20 * np.log10(np.absolute(h))
                 h_pha = np.arctan2(h.imag, h.real) * 180 / math.pi
@@ -67,7 +67,7 @@ class StateSpaceIdenSIMO(object):
         J = np.average(omg_ptr_cost_func(self.est_omg_ptr_list)) * 20
         return J
 
-    def estimate(self, ssm: StateSpaceModel, syms, omg_min=None, omg_max=None, constant_defines=None):
+    def estimate(self, ssm: StateSpaceParamModel, syms, omg_min=None, omg_max=None, constant_defines=None):
         assert self.y_dims == ssm.y_dims, "StateSpaceModel dim : {} need to iden must have same dims with Hs {}".format(
             ssm.y_dims, self.y_dims)
         if constant_defines is None:
@@ -116,7 +116,7 @@ class StateSpaceIdenSIMO(object):
         omg_to_h = np.vectorize(lambda omg: complex(trans.evalf(subs={sp.symbols("s"): omg * 1J})))
         return omg_to_h(self.freq)
 
-    def draw_freq_res(self, ssm: StateSpaceModel, x):
+    def draw_freq_res(self, ssm: StateSpaceParamModel, x):
         if self.fig is not None:
             plt.close(self.fig)
 
@@ -210,65 +210,3 @@ class StateSpaceIdenSIMO(object):
                 omg_ptr = omg_ptr + 1
 
 
-def test_pure_symbloic():
-    Xwdot, Zwdot, Mwdot = sp.symbols('Xwdot Zwdot Mwdot')
-
-    M = sp.Matrix([[1, -Xwdot, 0, 0],
-                   [0, 1 - Zwdot, 0, 0],
-                   [0, -Mwdot, 1, 0],
-                   [0, 0, 0, 1]])
-
-    g = 9.78
-    Xu, Xw, Xq, W0, th0 = sp.symbols('Xu Xw Xq W0 th0')
-    Zu, Zw, Zq, U0 = sp.symbols('Zu Zw Zq U0')
-    Mu, Mw, Mq = sp.symbols('Mu Mw Mq')
-
-    F = sp.Matrix([[Xu, Xw, Xq - W0, -g * sp.cos(th0)],
-                   [Zu, Zw, Zq + U0, -g * sp.sin(th0)],
-                   [Mu, Mw, Mq, 0],
-                   [0, 0, 1, 0]])
-
-    Xele, Zele, Mele = sp.symbols('Xele,Zele,Mele')
-    G = sp.Matrix([[Xele],
-                   [Zele],
-                   [Mele],
-                   [0]])
-
-    # direct using u w q th for y
-    H0 = sp.Matrix([[1, 0, 0, 0],
-                    [0, 1, 0, 0],
-                    [0, 0, 1, 0],
-                    [0, 0, 0, 1]])
-
-    H1 = sp.Matrix.zeros(4, 4)
-
-    syms = [Xwdot, Zwdot, Mwdot,
-            Xu, Xw, Xq, W0, th0,
-            Zu, Zw, Zq, U0,
-            Mu, Mw, Mq,
-            Xele, Zele, Mele]
-    lat_dyn_state_space = StateSpaceModel(M, F, G, H0, H1, syms)
-    syms = [Xwdot, Zwdot, Mwdot,
-            Xu, Xw, Xq, W0, th0,
-            Zu, Zw, Zq, U0,
-            Mu, Mw, Mq,
-            Xele, Zele, Mele]
-    subs = dict()
-    for key in syms:
-        subs[key] = random.random()
-    constant_defines = {U0: 15, W0: 0, th0: 0.8}
-    lat_dyn_state_space.load_constant_defines(constant_defines)
-    new_unknown = lat_dyn_state_space.get_new_params()
-    print(new_unknown)
-    lat_dyn_state_space.calucate_transfer_matrix_at_s(subs, 36J)
-    print(lat_dyn_state_space.Tnum)
-
-    syms = lat_dyn_state_space.get_new_params()
-    for key in syms:
-        subs[key] = random.random()
-    lat_dyn_state_space.calucate_transfer_matrix_at_s(subs, 36J, using_converted=True)
-    print(lat_dyn_state_space.Tnum)
-
-
-if __name__ == "__main__":
-    test_pure_symbloic()

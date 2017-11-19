@@ -3,7 +3,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 import math
 
-class StateSpaceModel(object):
+
+class StateSpaceParamModel(object):
     def __init__(self, M: sp.Matrix, F: sp.Matrix, G: sp.Matrix, H0: sp.Matrix, H1: sp.Matrix, syms: list):
         # M \dot x = F x + G u
         # y = H0 X + H1 \dot x
@@ -190,5 +191,3 @@ class StateSpaceModel(object):
         amp = 20 * np.log10(np.absolute(h))
         pha = np.arctan2(h.imag, h.real) * 180 / math.pi
         return amp, pha
-
-
