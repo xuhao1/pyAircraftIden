@@ -148,8 +148,19 @@ class StateSpaceParamModel(object):
         Tpart2 = (s * np.eye(self.dims) - A_num) ** -1 * B_num
         self.T = (H0_num + s * H1_num) * Tpart2
 
-    def calucate_transfer_matrix_at_s(self, sym_subs, s, using_converted=False):
-        # sym_subs = dict()
+    def get_transfer_func(self, y_index, u_index):
+        # Must be run after cal
+        assert self.T is not None, "Must run calucate_transfer_matrix first"
+        return self.T[y_index, u_index]
+
+    @staticmethod
+    def get_amp_pha_from_matrix(Tnum, u_index, y_index):
+        h = Tnum[y_index, u_index]
+        amp = 20 * np.log10(np.absolute(h))
+        pha = np.arctan2(h.imag, h.real) * 180 / math.pi
+        return amp, pha
+
+    def get_ssm_by_syms(self, sym_subs, using_converted=False):
         A_num = self.A_numeric.copy()
         B_num = self.B_numeric.copy()
         H0_num = self.H0_numeric.copy()
@@ -174,20 +185,45 @@ class StateSpaceParamModel(object):
                     mat_process = H1_num
                 assert mat_process is not None, "Mat name {} illegal".format(mn)
                 mat_process[i][j] = v
+        return StateSpaceModel(A_num, B_num, H0_num, H1_num)
 
-        TT = np.linalg.inv((s * np.eye(self.dims) - A_num))
-        Tpart2 = np.dot(TT, B_num)
-        Tnum = np.dot((H0_num + s * H1_num), Tpart2)
+
+class StateSpaceModel():
+    def __init__(self, A_num, B_num, H0_num, H1_num=None):
+        if H1_num is None:
+            H1_num = np.zeros(H0_num.shape)
+        self.A = A_num
+        self.B = B_num
+        self.H0 = H0_num
+        self.H1 = H1_num
+        self.check_dims()
+
+    def calucate_transfer_matrix_at_omg(self, omg):
+        s = omg * 1J
+        TT = np.linalg.inv((s * np.eye(self.dims) - self.A))
+        Tpart2 = np.dot(TT, self.B)
+        Tnum = np.dot((self.H0 + s * self.H1), Tpart2)
         return Tnum
 
-    def get_transfer_func(self, y_index, u_index):
-        # Must be run after cal
-        assert self.T is not None, "Must run calucate_transfer_matrix first"
-        return self.T[y_index, u_index]
+    def check_dims(self):
+        # 0 - - -n
+        # |
+        # |
+        # m
+        self.dims, n = self.A.shape
+        assert self.dims == n, "Shape of M must equal"
+        m, n = self.A.shape
+        assert m == n == self.dims, 'Error on F shape needs {0}x{0} got {1}x{2}'.format(self.dims, m, n)
 
-    @staticmethod
-    def get_amp_pha_from_matrix(Tnum, u_index, y_index):
-        h = Tnum[y_index, u_index]
-        amp = 20 * np.log10(np.absolute(h))
-        pha = np.arctan2(h.imag, h.real) * 180 / math.pi
-        return amp, pha
+        m, n = self.B.shape
+        self.u_dims = n
+        assert m == self.dims, 'Error on G shape needs {0}x{2} got {1}x{2}'.format(self.dims, m, n)
+
+        m, n = self.H0.shape
+        self.y_dims = m
+        assert n == self.dims, 'Error on H0 shape needs {1}x{0} got {1}x{2}'.format(self.dims, m, n)
+
+        m, n = self.H1.shape
+        assert n == self.dims and m == self.y_dims, 'Error on H0 shape needs {1}x{0} got {2}x{3}'.format(self.dims,
+                                                                                                         self.y_dims, m,
+                                                                                                         n)

@@ -9,6 +9,7 @@ import copy
 import multiprocessing
 from AircraftIden.StateSpaceParamModel import StateSpaceParamModel
 
+
 class StateSpaceIdenSIMO(object):
     def __init__(self, freq, Hs, coherens, nw=20, enable_debug_plot=False, max_sample_times=10, accept_J=50,
                  y_names=None):
@@ -29,18 +30,19 @@ class StateSpaceIdenSIMO(object):
 
         self.fig = None
 
-    def cost_func(self, ssm: StateSpaceParamModel, x):
+    def cost_func(self, sspm: StateSpaceParamModel, x):
         sym_sub = dict()
         assert len(x) == len(self.x_syms), 'State length must be equal with x syms'
         # setup state x
         sym_sub = dict(zip(self.x_syms, x))
+        ssm = sspm.get_ssm_by_syms(sym_sub, using_converted=True)
 
         def cost_func_at_omg_ptr(omg_ptr):
             omg = self.freq[omg_ptr]
-            Tnum = ssm.calucate_transfer_matrix_at_s(sym_sub, omg * 1j, using_converted=True)
+            Tnum = ssm.calucate_transfer_matrix_at_omg(omg)
 
             def chn_cost_func(y_index):
-                # amp, pha = ssm.get_amp_pha_from_trans(trans, omg)
+                # amp, pha = sspm.get_amp_pha_from_trans(trans, omg)
                 amp, pha = StateSpaceParamModel.get_amp_pha_from_matrix(Tnum, 0, y_index)
                 h = self.Hs[y_index][omg_ptr]
                 h_amp = 20 * np.log10(np.absolute(h))
@@ -59,7 +61,7 @@ class StateSpaceIdenSIMO(object):
                 return J * wgamma
 
             chn_cost_func = np.vectorize(chn_cost_func)
-            J_arr = chn_cost_func(range(ssm.y_dims))
+            J_arr = chn_cost_func(range(sspm.y_dims))
             J = np.average(J_arr)
             return J
 
@@ -67,28 +69,28 @@ class StateSpaceIdenSIMO(object):
         J = np.average(omg_ptr_cost_func(self.est_omg_ptr_list)) * 20
         return J
 
-    def estimate(self, ssm: StateSpaceParamModel, syms, omg_min=None, omg_max=None, constant_defines=None):
-        assert self.y_dims == ssm.y_dims, "StateSpaceModel dim : {} need to iden must have same dims with Hs {}".format(
-            ssm.y_dims, self.y_dims)
+    def estimate(self, sspm: StateSpaceParamModel, syms, omg_min=None, omg_max=None, constant_defines=None):
+        assert self.y_dims == sspm.y_dims, "StateSpaceModel dim : {} need to iden must have same dims with Hs {}".format(
+            sspm.y_dims, self.y_dims)
         if constant_defines is None:
             constant_defines = dict()
         self.init_omg_list(omg_min, omg_max)
 
         self.syms = syms
-        ssm.load_constant_defines(constant_defines)
-        self.x_syms = list(ssm.get_new_params())
+        sspm.load_constant_defines(constant_defines)
+        self.x_syms = list(sspm.get_new_params())
         self.x_dims = len(self.x_syms)
         print("Will estimate num {} {}".format(self.x_syms.__len__(), self.x_syms))
 
-        J, x = self.parallel_solve(ssm)
-        self.draw_freq_res(ssm, x)
-        x_syms = ssm.solve_params_from_newparams(x)
+        J, x = self.parallel_solve(sspm)
+        self.draw_freq_res(sspm, x)
+        x_syms = sspm.solve_params_from_newparams(x)
         print("syms {}".format(x_syms))
         plt.show()
         return J, x_syms
 
-    def parallel_solve(self, ssm):
-        self.ssm = ssm
+    def parallel_solve(self, sspm):
+        self.sspm = sspm
         pool = multiprocessing.Pool()
         result = pool.map(self.solve, range(self.max_sample_times))
         J_min = 100000
@@ -100,10 +102,10 @@ class StateSpaceIdenSIMO(object):
         return J_min, x
 
     def solve(self, id=0):
-        ssm = copy.deepcopy(self.ssm)
+        sspm = copy.deepcopy(self.sspm)
         print("Solve id {}".format(id))
-        f = lambda x: self.cost_func(ssm, x)
-        x0 = self.setup_initvals(ssm)
+        f = lambda x: self.cost_func(sspm, x)
+        x0 = self.setup_initvals(sspm)
         # return x0, 0
         ret = minimize(f, x0)
         x = ret.x.copy()
@@ -116,7 +118,7 @@ class StateSpaceIdenSIMO(object):
         omg_to_h = np.vectorize(lambda omg: complex(trans.evalf(subs={sp.symbols("s"): omg * 1J})))
         return omg_to_h(self.freq)
 
-    def draw_freq_res(self, ssm: StateSpaceParamModel, x):
+    def draw_freq_res(self, sspm: StateSpaceParamModel, x):
         if self.fig is not None:
             plt.close(self.fig)
 
@@ -129,18 +131,19 @@ class StateSpaceIdenSIMO(object):
         fig.subplots_adjust(right=0.9)
 
         self.Hest = copy.deepcopy(self.Hs)
+        ssm = sspm.get_ssm_by_syms(sym_sub, using_converted=True)
 
         for omg_ptr in range(self.freq.__len__()):
             u_index = 0
             omg = self.freq[omg_ptr]
-            Tnum = ssm.calucate_transfer_matrix_at_s(sym_sub, omg * 1j, using_converted=True)
+            Tnum = ssm.calucate_transfer_matrix_at_omg(sym_sub, omg, using_converted=True)
             for y_index in range(self.y_dims):
                 h = Tnum[y_index, u_index]
                 h = complex(h)
                 self.Hest[y_index][omg_ptr] = h
 
         for y_index in range(self.y_dims):
-            # trans = ssm.get_transfer_func(y_index, 0)
+            # trans = sspm.get_transfer_func(y_index, 0)
             amp0, pha0 = FreqIdenSIMO.get_amp_pha_from_h(self.Hs[y_index])
             amp1, pha1 = FreqIdenSIMO.get_amp_pha_from_h(self.Hest[y_index])
             # amp1, pha1 = amp0, pha0
@@ -171,17 +174,17 @@ class StateSpaceIdenSIMO(object):
 
             ax1.legend(lines, [l.get_label() for l in lines])
 
-    def setup_initvals(self, ssm):
-        source_syms = ssm.syms
-        source_syms_dims = ssm.syms.__len__()
+    def setup_initvals(self, sspm):
+        source_syms = sspm.syms
+        source_syms_dims = sspm.syms.__len__()
         source_syms_init_vals = np.random.rand(source_syms_dims) * 2 - 1
         subs = dict(zip(source_syms, source_syms_init_vals))
 
         x0 = np.zeros(self.x_dims)
         for i in range(self.x_dims):
             sym = self.x_syms[i]
-            # Eval sym value from ssm
-            sym_def = ssm.new_params_raw_defines[sym]
+            # Eval sym value from sspm
+            sym_def = sspm.new_params_raw_defines[sym]
             v = sym_def.evalf(subs=subs)
             # print("new sym {} symdef {} vinit {}".format(sym, sym_def, v))
             x0[i] = v
@@ -208,5 +211,3 @@ class StateSpaceIdenSIMO(object):
             elif omg_ptr < omg_list.__len__() and i == self.freq.__len__() - 1:
                 self.est_omg_ptr_list.append(i)
                 omg_ptr = omg_ptr + 1
-
-
