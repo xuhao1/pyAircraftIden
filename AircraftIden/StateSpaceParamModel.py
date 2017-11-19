@@ -231,16 +231,18 @@ class StateSpaceModel():
         pha = np.arctan2(h.imag, h.real) * 180 / math.pi
         return amp, pha
 
-    def response_by_u_seq(self, t_seq, u_seq, X0):
-        sample_rate = (t_seq[-1] - t_seq[0])
+    def response_by_u_seq(self, t_seq, u_seq, X0=None):
+        if X0 is None:
+            X0 = np.zeros(self.dims)
+        sample_rate = (t_seq[-1] - t_seq[0])/len(t_seq)
         T, y_out, x_out = control.forced_response(self.ssm, t_seq, u_seq, X0)
         x_out = np.transpose(x_out)
         y_out = np.transpose(y_out)
 
-        x_diff = np.diff(x_out,axis=0)
-        x_diff_tail = np.zeros((1,self.dims))
+        x_diff = np.diff(x_out, axis=0)
+        x_diff_tail = np.zeros((1, self.dims))
         x_dot = np.concatenate((x_diff, x_diff_tail), axis=0) * sample_rate
 
         yout_add = np.apply_along_axis(lambda xdot: np.dot(self.H1, xdot), 1, x_dot)
-        y_out = y_out + yout_add
+        y_out = y_out #+ yout_add
         return t_seq, y_out

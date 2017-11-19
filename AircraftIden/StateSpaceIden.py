@@ -87,14 +87,17 @@ class StateSpaceIdenSIMO(object):
 
         J, x = self.parallel_solve(sspm)
         x_syms = sspm.solve_params_from_newparams(x)
-        print("syms {}".format(x_syms))
+        print("J : {} syms {}".format(J, x_syms))
+
+
+        self.x_best = x
+        self.J_min = J
 
         if self.enable_debug_plot:
             self.draw_freq_res(sspm, x)
             plt.show()
 
-        self.x_best = x
-        self.J_min = J
+
         return self.J_min, self.get_best_ssm()
 
     def parallel_solve(self, sspm):
@@ -118,6 +121,7 @@ class StateSpaceIdenSIMO(object):
         ret = minimize(f, x0)
         x = ret.x.copy()
         J = ret.fun
+
         print("exit id {} J:{}".format(id, J))
         return J, x
 

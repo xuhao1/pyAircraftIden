@@ -8,7 +8,7 @@ import sympy as sp
 import pickle
 
 
-def lat_dyn_SIMO(iter, show_freq_iden_plots=False):
+def lat_dyn_SIMO(iter, show_freq_iden_plots=False, show_ssm_iden_plot=False):
     # save_data_list = ["running_time", "yoke_pitch",
     #                  "theta", "airspeed", "q", "aoa", "VVI", "alt", "vx_body", "vy_body", "vz_body"]
 
@@ -114,8 +114,8 @@ def lat_dyn_SIMO(iter, show_freq_iden_plots=False):
                     [0, 1, 0, 0],
                     [0, 0, 1, 0],
                     [0, 0, 0, 1],
-                    [0, 0, W0, - g * math.cos(th0)],  # Issue!!!!!!!
-                    [0, 0, -U0, g * math.sin(th0)]]
+                    [0, 0, W0, - g * math.cos(th0)],  # Our ax is along forward
+                    [0, 0, -U0, - g * math.sin(th0)]]#az is down to earth
                    )
 
     H1 = sp.Matrix([
@@ -135,13 +135,16 @@ def lat_dyn_SIMO(iter, show_freq_iden_plots=False):
     lat_dyn_state_space = StateSpaceParamModel(M, F, G, H0, H1, syms)
 
     ssm_iden = StateSpaceIdenSIMO(freq, Hs, coherens, max_sample_times=iter, accept_J=20,
-                                  enable_debug_plot=False, y_names=[r"v_x", "w", "q", r"$\theta$", r"a_x", r"a_z"])
+                                  enable_debug_plot=show_ssm_iden_plot,
+                                  y_names=[r"v_x", "w", "q", r"$\theta$", r"a_x", r"a_z"])
     J, ssm = ssm_iden.estimate(lat_dyn_state_space, syms, constant_defines={})
-
+    print(ssm.A)
+    # print(ssm.
     with open("../data/SIMStateSpaceExample.pkl", 'wb') as output:
         pickle.dump(ssm, output, pickle.HIGHEST_PROTOCOL)
 
-def post_analyse_ssm(pkl_name,show_freq_iden_plots = False):
+
+def post_analyse_ssm(pkl_name, show_freq_iden_plots=False):
     arr = np.load("../../XPlaneResearch/data/sweep_data_2017_11_18_17_19.npy")
     time_seq = arr[:, 0]
     ele_seq = arr[:, 1]
@@ -198,12 +201,49 @@ def post_analyse_ssm(pkl_name,show_freq_iden_plots = False):
                              q_seq, theta_seq, ax_seq, az_seq, win_num=32)
     with open(pkl_name, 'rb') as input:
         ssm = pickle.load(input)
-        t_seq,y_seq = ssm.response_by_u_seq(t_seq=simo_iden.time_seq, u_seq=simo_iden.x_seq, X0=np.array([U0, W0, 0, th0]))
-        plt.plot(t_seq,y_seq)
+        print(ssm.A)
+        ele_seq = simo_iden.x_seq
+        # ele_seq = np.zeros(ele_seq.shape)
+        t_seq, y_seq = ssm.response_by_u_seq(t_seq=simo_iden.time_seq, u_seq=ele_seq, X0=np.array([0, 0, 0, 0]))
+
+        plt.subplot(321)
+        plt.plot(t_seq, y_seq[:, 0] + U0, label="est")
+        plt.plot(time_seq, vx_seq, label="data")
+        plt.legend()
+        plt.title("u")
+
+        plt.subplot(322)
+        plt.plot(t_seq, y_seq[:, 1] + W0, label="est")
+        plt.plot(time_seq, vz_seq, label="data")
+        plt.legend()
+        plt.title("w")
+
+        plt.subplot(323)
+        plt.plot(t_seq, y_seq[:, 2], label="est")
+        plt.plot(time_seq, q_seq, label="data")
+        plt.legend()
+        plt.title("q")
+
+        plt.subplot(324)
+        plt.plot(t_seq, y_seq[:, 3] + th0, label="est")
+        plt.plot(time_seq, theta_seq, label="data")
+        plt.legend()
+        plt.title(r"\theta")
+
+        plt.subplot(325)
+        plt.plot(t_seq, y_seq[:, 4] + ax_seq[0], label="est")
+        plt.plot(time_seq, ax_seq, label="data")
+        plt.legend()
+        plt.title(r"a_x")
+        plt.subplot(326)
+        plt.plot(t_seq, y_seq[:, 5] + az_seq[0], label="est")
+        plt.plot(time_seq, az_seq, label="data")
+        plt.legend()
+        plt.title(r"a_z")
+
         plt.show()
 
+
 if __name__ == "__main__":
-    # plt.rc('text', usetex=True)
-    sp.init_printing()
-    #lat_dyn_SIMO(1, show_freq_iden_plots=False)
+    #lat_dyn_SIMO(23, show_freq_iden_plots=False, show_ssm_iden_plot=True)
     post_analyse_ssm("../data/SIMStateSpaceExample.pkl")
