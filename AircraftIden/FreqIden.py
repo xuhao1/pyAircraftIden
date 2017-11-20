@@ -11,8 +11,8 @@ def remove_seq_average_and_drift(x_seq):
     x_seq = x_seq - np.average(x_seq)
     drift = x_seq[-1] - x_seq[0]
     start_v = x_seq[0]
-    for i in range(len(x_seq)):
-        x_seq[i] = x_seq[i] - drift * i / len(x_seq) - start_v
+    #for i in range(len(x_seq)):
+    #    x_seq[i] = x_seq[i] - drift * i / len(x_seq) - start_v
     return x_seq
 
 

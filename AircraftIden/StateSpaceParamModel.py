@@ -232,15 +232,9 @@ class StateSpaceModel():
         return amp, pha
 
     def response_by_u_seq(self, t_seq, u_seq, X0=None):
-        # self.H0[5][3] = 0
-        # self.H0[5][2] = 0
-        # self.D = np.zeros((self.y_dims, self.u_dims))
-        # self.ssm = control.StateSpace(self.A, self.B, self.H0, self.D)
-
-        print(self.H0)
         if X0 is None:
             X0 = np.zeros(self.dims)
-        sample_rate = (t_seq[-1] - t_seq[0]) / len(t_seq)
+        sample_rate = len(t_seq) / (t_seq[-1] - t_seq[0])
         T, y_out, x_out = control.forced_response(self.ssm, t_seq, u_seq, X0)
         x_out = np.transpose(x_out)
         y_out = np.transpose(y_out)
@@ -249,7 +243,8 @@ class StateSpaceModel():
         x_diff_tail = np.zeros((1, self.dims))
         x_dot = np.concatenate((x_diff, x_diff_tail), axis=0) * sample_rate
         yout_add = np.apply_along_axis(lambda xdot: np.dot(self.H1, xdot), 1, x_dot)
-        y_out = y_out#  + yout_add
+
+        y_out = y_out + yout_add
         return t_seq, y_out
 
     def __str__(self):

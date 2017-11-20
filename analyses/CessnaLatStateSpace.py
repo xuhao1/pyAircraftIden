@@ -1,6 +1,10 @@
+import matplotlib
+matplotlib.use("Qt5Agg")
+
 from AircraftIden.data_case.GeneralAircraftCase import GeneralAircraftCase, PX4AircraftCase, get_concat_data
 from AircraftIden import FreqIdenSIMO, TransferFunctionFit
 import numpy as np
+
 import matplotlib.pyplot as plt
 import math
 from AircraftIden.StateSpaceIden import StateSpaceIdenSIMO, StateSpaceParamModel
@@ -62,7 +66,7 @@ def lat_dyn_SIMO(iter, show_freq_iden_plots=False, show_ssm_iden_plot=False):
         plt.legend()
 
     simo_iden = FreqIdenSIMO(time_seq, 1, 20, ele_seq, vx_seq, vz_seq,
-                             q_seq, theta_seq, ax_seq, az_seq, win_num=32)
+                             q_seq, theta_seq, ax_seq, az_seq, win_num=24)
 
     if show_freq_iden_plots:
         plt.figure("Ele->Vx")
@@ -138,7 +142,7 @@ def lat_dyn_SIMO(iter, show_freq_iden_plots=False, show_ssm_iden_plot=False):
                                   enable_debug_plot=show_ssm_iden_plot,
                                   y_names=[r"v_x", "w", "q", r"$\theta$", r"a_x", r"a_z"])
     J, ssm = ssm_iden.estimate(lat_dyn_state_space, syms, constant_defines={})
-    print(ssm.A)
+    ssm_iden.draw_freq_res()
     # print(ssm.
     with open("../data/SIMStateSpaceExample.pkl", 'wb') as output:
         pickle.dump(ssm, output, pickle.HIGHEST_PROTOCOL)
@@ -206,6 +210,7 @@ def post_analyse_ssm(pkl_name, show_freq_iden_plots=False):
         # ele_seq = np.zeros(ele_seq.shape)
         t_seq, y_seq = ssm.response_by_u_seq(t_seq=simo_iden.time_seq, u_seq=ele_seq, X0=np.array([0, 0, 0, 0]))
 
+        plt.figure("DataVsEST")
         plt.subplot(321)
         plt.plot(t_seq, y_seq[:, 0] + U0, label="est")
         plt.plot(time_seq, vx_seq, label="data")
@@ -245,5 +250,5 @@ def post_analyse_ssm(pkl_name, show_freq_iden_plots=False):
 
 
 if __name__ == "__main__":
-    lat_dyn_SIMO(23, show_freq_iden_plots=False, show_ssm_iden_plot=True)
+    lat_dyn_SIMO(23, show_freq_iden_plots=False, show_ssm_iden_plot=False)
     post_analyse_ssm("../data/SIMStateSpaceExample.pkl")

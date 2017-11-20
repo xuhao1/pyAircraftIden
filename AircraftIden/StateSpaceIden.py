@@ -94,7 +94,7 @@ class StateSpaceIdenSIMO(object):
         self.J_min = J
 
         if self.enable_debug_plot:
-            self.draw_freq_res(sspm, x)
+            self.draw_freq_res()
             plt.show()
 
         return self.J_min, self.get_best_ssm()
@@ -117,8 +117,8 @@ class StateSpaceIdenSIMO(object):
                 break
             for i in range(results.__len__()):
                 thr = results[i]
-                if thr.ready():  # 线程函数是否已经启动了
-                    if thr.successful():  # 线程函数是否执行成功
+                if thr.ready():
+                    if thr.successful():
                         J, x_tmp = thr.get()
                         if J < J_min:
                             J_min = J
@@ -158,13 +158,13 @@ class StateSpaceIdenSIMO(object):
         sym_sub = dict(zip(self.x_syms, self.x_best))
         return self.sspm.get_ssm_by_syms(sym_sub, using_converted=True)
 
-    def draw_freq_res(self, sspm: StateSpaceParamModel, x):
+    def draw_freq_res(self):
         if self.fig is not None:
             plt.close(self.fig)
 
         self.fig, self.axs = plt.subplots(self.y_dims, 1, sharey=True)
         fig, axs = self.fig, self.axs
-        fig.set_size_inches(25, 15)
+        fig.set_size_inches(15, 7)
         fig.canvas.set_window_title('FreqRes vs est')
         fig.tight_layout()
         fig.subplots_adjust(right=0.9)
