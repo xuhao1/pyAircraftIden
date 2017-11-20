@@ -201,7 +201,7 @@ def post_analyse_ssm(pkl_name, show_freq_iden_plots=False):
                              q_seq, theta_seq, ax_seq, az_seq, win_num=32)
     with open(pkl_name, 'rb') as input:
         ssm = pickle.load(input)
-        print(ssm.A)
+        print(ssm)
         ele_seq = simo_iden.x_seq
         # ele_seq = np.zeros(ele_seq.shape)
         t_seq, y_seq = ssm.response_by_u_seq(t_seq=simo_iden.time_seq, u_seq=ele_seq, X0=np.array([0, 0, 0, 0]))
@@ -245,5 +245,5 @@ def post_analyse_ssm(pkl_name, show_freq_iden_plots=False):
 
 
 if __name__ == "__main__":
-    #lat_dyn_SIMO(23, show_freq_iden_plots=False, show_ssm_iden_plot=True)
+    lat_dyn_SIMO(23, show_freq_iden_plots=False, show_ssm_iden_plot=True)
     post_analyse_ssm("../data/SIMStateSpaceExample.pkl")

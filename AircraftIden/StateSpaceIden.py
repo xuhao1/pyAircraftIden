@@ -8,6 +8,7 @@ from scipy.optimize import minimize
 import copy
 import multiprocessing
 from AircraftIden.StateSpaceParamModel import StateSpaceParamModel, StateSpaceModel
+import time
 
 
 class StateSpaceIdenSIMO(object):
@@ -89,7 +90,6 @@ class StateSpaceIdenSIMO(object):
         x_syms = sspm.solve_params_from_newparams(x)
         print("J : {} syms {}".format(J, x_syms))
 
-
         self.x_best = x
         self.J_min = J
 
@@ -97,19 +97,42 @@ class StateSpaceIdenSIMO(object):
             self.draw_freq_res(sspm, x)
             plt.show()
 
-
         return self.J_min, self.get_best_ssm()
 
     def parallel_solve(self, sspm):
         self.sspm = sspm
         pool = multiprocessing.Pool()
-        result = pool.map(self.solve, range(self.max_sample_times))
+        # result = pool.map_async(self.solve, range(self.max_sample_times))
+        results = []
+        for i in range(self.max_sample_times):
+            result = pool.apply_async(self.solve, (i,))
+            results.append(result)
+
         J_min = 100000
         x = None
-        for J, xtmp in result:
-            if J < J_min:
-                J_min = J
-                x = xtmp
+        should_exit_pool = False
+        while not should_exit_pool:
+            if results.__len__() == 0:
+                print("All in pool finish")
+                break
+            for i in range(results.__len__()):
+                thr = results[i]
+                if thr.ready():  # 线程函数是否已经启动了
+                    if thr.successful():  # 线程函数是否执行成功
+                        J, x_tmp = thr.get()
+                        if J < J_min:
+                            J_min = J
+                            x = x_tmp
+                            print("Found new better {}".format(J))
+                        if J < self.accept_J:
+                            print("Terminate pool")
+                            pool.terminate()
+                            return J_min, x
+                        del results[i]
+                        break
+
+            time.sleep(0.01)
+        print("Using J {} x {}".format(J_min, x))
         return J_min, x
 
     def solve(self, id=0):
