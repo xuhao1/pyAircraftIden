@@ -1,18 +1,22 @@
+import matplotlib
+
+matplotlib.use("Qt5Agg")
+
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.interpolate import interp1d
 import math
-from scipy import signal
 from AircraftIden.SpectrumAnalyse import MultiSignalSpectrum
 import copy
+from AircraftIden.CompositeWindow import CompositeWindow
 
 
 def remove_seq_average_and_drift(x_seq):
     x_seq = x_seq - np.average(x_seq)
     drift = x_seq[-1] - x_seq[0]
     start_v = x_seq[0]
-    #for i in range(len(x_seq)):
-    #    x_seq[i] = x_seq[i] - drift * i / len(x_seq) - start_v
+    for i in range(len(x_seq)):
+        x_seq[i] = x_seq[i] - drift * i / len(x_seq) - start_v
     return x_seq
 
 
@@ -64,6 +68,12 @@ class FreqIdenSIMO:
         print("Start calc spectrum for data: totalTime{} sample rate {}".format(self.time_len, self.sample_rate))
         self.spectrumAnal = MultiSignalSpectrum(self.sample_rate, omg_min, omg_max, datas, win_num)
 
+        print(CompositeWindow.suggest_win_range(self.time_len, omg_max, 3))
+        win_num_lists = [2,5, 20, 32, 64]
+        # win_num_lists = [64]
+        self.compose = CompositeWindow(self.x_seq, self.y_seqs[0], self.sample_rate, omg_min, omg_max,
+                                       win_num_lists)
+
     def get_cross_coherence(self, index1, index2):
         # Get cross coherence only works when there is a assit input
         # we treat x2 as a
@@ -99,8 +109,12 @@ class FreqIdenSIMO:
         else:
             return 1
 
+    def compute_gxx_gxy_using_compose_window(self):
+        pass
+
     def get_freq_iden(self, y_index=0):
         freq, gxx = self.spectrumAnal.get_gxx_by_index(-1)
+
         if self.enable_assit_input:
             gxx = gxx * self.get_assit_xx_norm()
         _, gxy = self.spectrumAnal.get_gxy_by_index(-1, y_index)
@@ -109,10 +123,17 @@ class FreqIdenSIMO:
             gxy = gxy * self.get_assit_xy_norm(y_index)
 
         _, gyy = self.spectrumAnal.get_gxx_by_index(y_index)
-        if self.enable_assit_input:
-            gyy = gyy * self.get_assit_yy_norm(y_index)
+
+        if y_index == 0:
+            gxx = self.compose.gxx
+            gxy = self.compose.gxy
+            gyy = self.compose.gyy
+
+        # if self.enable_assit_input:
+        #     gyy = gyy * self.get_assit_yy_norm(y_index)
         H = FreqIdenSIMO.get_h_from_gxy_gxx(gxy, gxx)
         gamma2 = FreqIdenSIMO.get_coherence(gxx, gxy, gyy)
+
         return freq, H, gamma2, gxx, gxy, gyy
 
     def get_all_idens(self):
@@ -124,7 +145,7 @@ class FreqIdenSIMO:
             freq, h, co, _, _, _ = self.get_freq_iden(i)
             Hs.append(h)
             coheres.append(co)
-        return freq,Hs,coheres
+        return freq, Hs, coheres
 
     def plt_bode_plot(self, index=0):
         # f, ax = plt.subplots()
@@ -181,12 +202,16 @@ class FreqIdenSIMO:
         return np.absolute(gxy) * np.absolute(gxy) / (np.absolute(gxx) * np.absolute(gyy))
 
 
-if __name__ == "__main__":
+def basic_test():
     arr = np.load("../data/sweep_data_2017_10_18_14_07.npy")
     time_seq_source = arr[:, 0]
     ele_seq_source = arr[:, 1]
     q_seq_source = arr[:, 4]
-    simo_iden = FreqIdenSIMO(time_seq_source, 0.1, 100, ele_seq_source, q_seq_source, win_num=64)
+    airspeed_seq = arr[:, 3]
+    theta_seq = arr[:, 2] / 180 * math.pi
+
+
+    simo_iden = FreqIdenSIMO(time_seq_source, 0.1, 100, ele_seq_source,theta_seq, win_num=64)
     freq, H, gamma2, gxx, gxy, gyy = simo_iden.get_freq_iden(0)
     h_amp, h_phase = FreqIdenSIMO.get_amp_pha_from_h(H)
 
@@ -211,3 +236,7 @@ if __name__ == "__main__":
     plt.grid()
 
     plt.show()
+
+
+if __name__ == "__main__":
+    basic_test()
