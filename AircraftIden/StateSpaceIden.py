@@ -12,21 +12,21 @@ import time
 
 
 class StateSpaceIdenSIMO(object):
-    def __init__(self, freq, Hs, coherens, nw=20, enable_debug_plot=False, max_sample_times=10, accept_J=50,
+    def __init__(self, freqres, nw=20, enable_debug_plot=False, max_sample_times=20, accept_J=5,
                  y_names=None):
-        self.freq = freq
-        self.Hs = Hs
+        self.freq = freqres.freq
+        self.Hs = freqres.Hs
         self.wg = 1.0
         self.wp = 0.01745
         self.est_omg_ptr_list = []
         self.enable_debug_plot = enable_debug_plot
-        self.coherens = coherens
+        self.coherens = freqres.coherens
         self.nw = nw
         self.max_sample_times = max_sample_times
         self.accept_J = accept_J
         self.x_dims = 0
         self.x_syms = []
-        self.y_dims = len(Hs)
+        self.y_dims = len(self.Hs)
         self.y_names = y_names
 
         self.x_best = None
@@ -34,44 +34,6 @@ class StateSpaceIdenSIMO(object):
 
         self.fig = None
 
-    def cost_func(self, sspm: StateSpaceParamModel, x):
-        sym_sub = dict()
-        assert len(x) == len(self.x_syms), 'State length must be equal with x syms'
-        # setup state x
-        sym_sub = dict(zip(self.x_syms, x))
-        ssm = sspm.get_ssm_by_syms(sym_sub, using_converted=True)
-
-        def cost_func_at_omg_ptr(omg_ptr):
-            omg = self.freq[omg_ptr]
-            Tnum = ssm.calucate_transfer_matrix_at_omg(omg)
-
-            def chn_cost_func(y_index):
-                # amp, pha = sspm.get_amp_pha_from_trans(trans, omg)
-                amp, pha = StateSpaceModel.get_amp_pha_from_matrix(Tnum, 0, y_index)
-                h = self.Hs[y_index][omg_ptr]
-                h_amp = 20 * np.log10(np.absolute(h))
-                h_pha = np.arctan2(h.imag, h.real) * 180 / math.pi
-                pha_err = h_pha - pha
-                if pha_err > 180:
-                    pha_err = pha_err - 360
-                if pha_err < -180:
-                    pha_err = pha_err + 360
-                J = self.wg * pow(h_amp - amp, 2) + self.wp * pow(pha_err, 2)
-
-                gama2 = self.coherens[y_index][omg_ptr]
-
-                wgamma = 1.58 * (1 - math.exp(-gama2 * gama2))
-                wgamma = wgamma * wgamma
-                return J * wgamma
-
-            chn_cost_func = np.vectorize(chn_cost_func)
-            J_arr = chn_cost_func(range(sspm.y_dims))
-            J = np.average(J_arr)
-            return J
-
-        omg_ptr_cost_func = np.vectorize(cost_func_at_omg_ptr)
-        J = np.average(omg_ptr_cost_func(self.est_omg_ptr_list)) * 20
-        return J
 
     def estimate(self, sspm: StateSpaceParamModel, syms, omg_min=None, omg_max=None, constant_defines=None):
         assert self.y_dims == sspm.y_dims, "StateSpaceModel dim : {} need to iden must have same dims with Hs {}".format(
@@ -101,7 +63,10 @@ class StateSpaceIdenSIMO(object):
 
     def parallel_solve(self, sspm):
         self.sspm = sspm
-        pool = multiprocessing.Pool()
+        cpu_use = multiprocessing.cpu_count() - 1
+        if cpu_use < 1:
+            cpu_use = 1
+        pool = multiprocessing.Pool(cpu_use)
         # result = pool.map_async(self.solve, range(self.max_sample_times))
         results = []
         for i in range(self.max_sample_times):
@@ -127,6 +92,7 @@ class StateSpaceIdenSIMO(object):
                         if J < self.accept_J:
                             print("Terminate pool")
                             pool.terminate()
+                            print("Using J {} x {}".format(J_min, x))
                             return J_min, x
                         del results[i]
                         break
@@ -137,16 +103,70 @@ class StateSpaceIdenSIMO(object):
 
     def solve(self, id=0):
         sspm = copy.deepcopy(self.sspm)
-        print("Solve id {}".format(id))
+        # print("Solve id {}".format(id))
         f = lambda x: self.cost_func(sspm, x)
         x0 = self.setup_initvals(sspm)
         # return x0, 0
-        ret = minimize(f, x0)
+        con = {'type': 'ineq', 'fun': lambda x: self.constrain_func(sspm,x)}
+        opts = {'maxiter':1000000}
+        ret = minimize(f, x0,constraints=con,options=opts)
         x = ret.x.copy()
         J = ret.fun
-
         print("exit id {} J:{}".format(id, J))
         return J, x
+
+    def cost_func(self, sspm: StateSpaceParamModel, x):
+        sym_sub = dict()
+        assert len(x) == len(self.x_syms), 'State length must be equal with x syms'
+        # setup state x
+        sym_sub = dict(zip(self.x_syms, x))
+        ssm = sspm.get_ssm_by_syms(sym_sub, using_converted=True)
+
+        def cost_func_at_omg_ptr(omg_ptr):
+            omg = self.freq[omg_ptr]
+            Tnum = ssm.calucate_transfer_matrix_at_omg(omg)
+
+            def chn_cost_func(y_index):
+                # amp, pha = sspm.get_amp_pha_from_trans(trans, omg)
+                amp, pha = StateSpaceModel.get_amp_pha_from_matrix(Tnum, 0, y_index)
+                h = self.Hs[y_index][omg_ptr]
+                h_amp = 20 * np.log10(np.absolute(h))
+                h_pha = np.arctan2(h.imag, h.real) * 180 / math.pi
+                pha_err = h_pha - pha
+                if pha_err > 180:
+                    pha_err = pha_err - 360
+                if pha_err < -180:
+                    pha_err = pha_err + 360
+                J = self.wg * pow(h_amp - amp, 2) + self.wp * pow(pha_err, 2)
+
+                gama2 = self.coherens[y_index][omg_ptr]
+                if gama2 > 0:
+                    wgamma = 1.58 * (1 - math.exp(-gama2 * gama2))
+                    wgamma = wgamma * wgamma
+                else:
+                    wgamma = 0
+                return J * wgamma
+
+            chn_cost_func = np.vectorize(chn_cost_func)
+            J_arr = chn_cost_func(range(sspm.y_dims))
+            J = np.average(J_arr)
+            return J
+
+        omg_ptr_cost_func = np.vectorize(cost_func_at_omg_ptr)
+        J = np.average(omg_ptr_cost_func(self.est_omg_ptr_list)) * 20
+        return J
+
+    def constrain_func(self, sspm: StateSpaceParamModel, x):
+        sym_sub = dict()
+        assert len(x) == len(self.x_syms), 'State length must be equal with x syms'
+        # setup state x
+        sym_sub = dict(zip(self.x_syms, x))
+        ssm = sspm.get_ssm_by_syms(sym_sub, using_converted=True)
+        Amat = ssm.A
+        eigs = np.linalg.eigvals(Amat)
+        #print("eigs {} ret {}".format(eigs,-np.max(eigs)))
+        return - np.max(np.real(eigs))
+
 
     def get_H_from_s_trans(self, trans):
         trans = sp.simplify(trans)

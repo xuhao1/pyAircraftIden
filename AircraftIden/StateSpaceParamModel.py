@@ -224,6 +224,16 @@ class StateSpaceModel():
                                                                                                          self.y_dims, m,
                                                                                                          n)
 
+    def check_stable(self):
+        eigs = np.linalg.eigvals(self.A)
+        print("Eigs {}".format(eigs))
+        for eigv in eigs:
+            if np.real(eigv) > 1e-3:
+                print("Not stable")
+                return False
+        print("Stable")
+        return True
+
     @staticmethod
     def get_amp_pha_from_matrix(Tnum, u_index, y_index):
         h = Tnum[y_index, u_index]
@@ -245,7 +255,7 @@ class StateSpaceModel():
         yout_add = np.apply_along_axis(lambda xdot: np.dot(self.H1, xdot), 1, x_dot)
 
         y_out = y_out + yout_add
-        return t_seq, y_out
+        return t_seq, y_out,x_out
 
     def __str__(self):
         return "A {}\nB {}\nH0 {}\nH1 {}\n".format(self.A, self.B, self.H0, self.H1)
