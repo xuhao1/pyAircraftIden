@@ -34,7 +34,7 @@ def lat_dyn_freq(fn,show_freq_iden_plots=True):
     # X = [u,w,q,th]
     # Y = [w,q,th,ax,az]
     # Note ax ay contain gravity acc
-    simo_iden = FreqIdenSIMO(time_seq, 1, 20, ele_seq,vx_seq,vz_seq,
+    simo_iden = FreqIdenSIMO(time_seq, 1, 20, ele_seq,vz_seq,
                              q_seq,ax_seq, az_seq)
     freqres = simo_iden.get_freqres()
     output_path = "../data/{}_freqres.pkl".format(name)
@@ -86,7 +86,8 @@ def lat_dyn_freq(fn,show_freq_iden_plots=True):
 
 if __name__ == "__main__":
     import sys
-    fn = "../../XPlaneResearch/data/sweep_data_2017_11_18_17_19.npy"
+    #around 3100 meter high, full throttle speed 64.2m/s
+    fn = "../../XPlaneResearch/data/sweep_data_2017_12_10_19_05.npy"
 
     if sys.argv.__len__() > 2:
         fn = sys.argv[1]

@@ -27,9 +27,9 @@ def lat_dyn_SIMO(freqres,show_freq_iden_plots=False, show_ssm_iden_plot=False):
                    [0, 0, 0, 1]])
 
     g = 9.78
-    th0 = -0.0060394537820949975
-    U0 = 62.90218128988445
-    W0 = -1.1609134033843547
+    th0 =-0.004783792053474051
+    U0 = 64.24
+    W0 = -1.1477373864894442
 
     print("Trim theta {} U0 {} W0 {}".format(th0, U0, W0))
     Xu, Xw, Xq = sp.symbols('Xu Xw Xq')
@@ -48,7 +48,7 @@ def lat_dyn_SIMO(freqres,show_freq_iden_plots=False, show_ssm_iden_plot=False):
                    [0]])
 
     # direct using u w q ax az for y
-    H0 = sp.Matrix([  [1, 0, 0, 0],
+    H0 = sp.Matrix([
                     [0, 1, 0, 0],
                     [0, 0, 1, 0],
                     [0, 0, W0, - g * math.cos(th0)],  # Our ax is along forward
@@ -56,7 +56,6 @@ def lat_dyn_SIMO(freqres,show_freq_iden_plots=False, show_ssm_iden_plot=False):
                    )
 
     H1 = sp.Matrix([
-        [0, 0, 0, 0],
         [0, 0, 0, 0],
         [0, 0, 0, 0],
         [1, 0, 0, 0],
@@ -70,9 +69,9 @@ def lat_dyn_SIMO(freqres,show_freq_iden_plots=False, show_ssm_iden_plot=False):
             Xele, Zele, Mele]
     lat_dyn_state_space = StateSpaceParamModel(M, F, G, H0, H1, syms)
 
-    ssm_iden = StateSpaceIdenSIMO(freqres, accept_J=10,
+    ssm_iden = StateSpaceIdenSIMO(freqres, accept_J=20,
                                   enable_debug_plot=show_ssm_iden_plot,
-                                  y_names=['u',"w", "q", r"a_x", r"a_z"],)
+                                  y_names=["w", "q", r"a_x", r"a_z"],)
     J, ssm = ssm_iden.estimate(lat_dyn_state_space, syms, constant_defines={})
     ssm.check_stable()
     ssm_iden.draw_freq_res()
@@ -82,7 +81,8 @@ def lat_dyn_SIMO(freqres,show_freq_iden_plots=False, show_ssm_iden_plot=False):
 
 
 def post_analyse_ssm(pkl_name, show_freq_iden_plots=False):
-    arr = np.load("../../XPlaneResearch/data/sweep_data_2017_11_18_17_19.npy")
+    #verf data full throttle 3100meter high 62.4m/s
+    arr = np.load("../../XPlaneResearch/data/sweep_data_2017_12_10_20_08.npy")
     time_seq = arr[:, 0]
     ele_seq = arr[:, 1]
     q_seq = arr[:, 4]
@@ -151,32 +151,32 @@ def post_analyse_ssm(pkl_name, show_freq_iden_plots=False):
         plt.plot(t_seq, ele_seq1, label="data")
         plt.title("ele")
 
-        plt.subplot(322)
-        plt.plot(t_seq, y_seq[:, 0] + U0, label="est")
-        plt.plot(time_seq, vx_seq, label="data")
-        plt.legend()
-        plt.title("u")
+        # plt.subplot(322)
+        # plt.plot(t_seq, y_seq[:, 0] + U0, label="est")
+        # plt.plot(time_seq, vx_seq, label="data")
+        # plt.legend()
+        # plt.title("u")
 
         plt.subplot(323)
-        plt.plot(t_seq, y_seq[:, 1] + W0, label="est")
+        plt.plot(t_seq, y_seq[:, 0] + W0, label="est")
         plt.plot(time_seq, vz_seq, label="data")
         plt.legend()
         plt.title("w")
 
         plt.subplot(324)
-        plt.plot(t_seq, y_seq[:, 2], label="est")
+        plt.plot(t_seq, y_seq[:, 1], label="est")
         plt.plot(time_seq, q_seq, label="data")
         plt.legend()
         plt.title("q")
 
 
         plt.subplot(325)
-        plt.plot(t_seq, y_seq[:, 3] + ax0, label="est")
+        plt.plot(t_seq, y_seq[:, 2] + ax0, label="est")
         plt.plot(time_seq, ax_seq, label="data")
         plt.legend()
         plt.title(r"a_x")
         plt.subplot(326)
-        plt.plot(t_seq, y_seq[:, 4] + az0, label="est")
+        plt.plot(t_seq, y_seq[:, 3] + az0, label="est")
         plt.plot(time_seq, az_seq, label="data")
         plt.legend()
         plt.title(r"a_z")
@@ -210,8 +210,8 @@ def post_analyse_ssm(pkl_name, show_freq_iden_plots=False):
 
 
 if __name__ == "__main__":
-    pkl_name = "../data/sweep_data_2017_11_18_17_19_freqres.pkl"
+    pkl_name = "../data/sweep_data_2017_12_10_19_05_freqres.pkl"
     with open(pkl_name, 'rb') as inp:
         freqres = pickle.load(inp)
-        # lat_dyn_SIMO(freqres,show_freq_iden_plots=False)
+        # lat_dyn_SIMO(freqres,show_freq_iden_plots=True)
         post_analyse_ssm("../data/SIMStateSpaceExample.pkl")
