@@ -1,7 +1,7 @@
 import math
 import numpy as np
-import matplotlib.pyplot as plt
 from AircraftIden import FreqIdenSIMO
+import matplotlib.pyplot as plt
 from scipy.optimize import minimize, basinhopping
 import scipy.signal as signal
 import time
@@ -144,7 +144,7 @@ class TransferFunctionFit(object):
         bounds = [(None, None) for i in range(len(x0))]
         bounds[-1] = (0, 0.1)
         ret = minimize(f, x0, options={'maxiter': 10000000, 'disp': False}, bounds=bounds, tol=1e-15)
-        x = ret.x.copy() / ret.x[0]
+        x = ret.x.copy() / ret.x[self.num_ord]
         x[-1] = ret.x[-1]
         J = ret.fun
         return x, J
@@ -189,22 +189,23 @@ class TransferFunctionFit(object):
 
 def siso_freq_iden():
     # save_data_list = ["running_time", "yoke_pitch", "theta", "airspeed", "q", "aoa", "VVI", "alt"]
-    arr = np.load("../data/sweep_data_2017_10_18_14_07.npy")
+    arr = np.load("../../XPlaneResearch/data/sweep_data_2017_12_10_19_05.npy")
     time_seq_source = arr[:, 0]
     ele_seq_source = arr[:, 1]
-    q_seq_source = arr[:, 4]
+    q_seq_source = arr[:, 4]*math.pi / 180
     vvi_seq_source = arr[:, 6]
 
-    simo_iden = FreqIdenSIMO(time_seq_source, 0.2, 100, ele_seq_source, q_seq_source, vvi_seq_source, win_num=32)
+    simo_iden = FreqIdenSIMO(time_seq_source, 1, 30, ele_seq_source, q_seq_source, vvi_seq_source)
 
-    # plt.figure(0)
-    # simo_iden.plt_bode_plot(0)
+    #plt.figure(0)
+    #simo_iden.plt_bode_plot(0)
     #
     freq, H, gamma2, gxx, gxy, gyy = simo_iden.get_freq_iden(0)
 
     fitter = TransferFunctionFit(freq, H, gamma2, 2, 4, nw=20, enable_debug_plot=True)
     fitter.estimate()
 
+    fitter.plot()
     plt.show()
 
 

@@ -14,7 +14,7 @@ import pickle
 from AircraftIden.FreqIden import time_seq_preprocess
 
 
-def lat_dyn_SIMO(freqres,show_freq_iden_plots=False, show_ssm_iden_plot=False):
+def lat_dyn_SIMO(freqres, show_ssm_iden_plot=False):
     # X = [u,w,q,th]
     # Y = [w,q,th,ax,az]
     # Note ax ay contain gravity acc
@@ -27,7 +27,7 @@ def lat_dyn_SIMO(freqres,show_freq_iden_plots=False, show_ssm_iden_plot=False):
                    [0, 0, 0, 1]])
 
     g = 9.78
-    th0 =-0.004783792053474051
+    th0 = -0.004783792053474051
     U0 = 64.24
     W0 = -1.1477373864894442
 
@@ -49,11 +49,11 @@ def lat_dyn_SIMO(freqres,show_freq_iden_plots=False, show_ssm_iden_plot=False):
 
     # direct using u w q ax az for y
     H0 = sp.Matrix([
-                    [0, 1, 0, 0],
-                    [0, 0, 1, 0],
-                    [0, 0, W0, - g * math.cos(th0)],  # Our ax is along forward
-                    [0, 0, -U0, - g * math.sin(th0)]]  # az is down to earth
-                   )
+        [0, 1, 0, 0],
+        [0, 0, 1, 0],
+        [0, 0, W0, - g * math.cos(th0)],  # Our ax is along forward
+        [0, 0, -U0, - g * math.sin(th0)]]  # az is down to earth
+    )
 
     H1 = sp.Matrix([
         [0, 0, 0, 0],
@@ -71,7 +71,7 @@ def lat_dyn_SIMO(freqres,show_freq_iden_plots=False, show_ssm_iden_plot=False):
 
     ssm_iden = StateSpaceIdenSIMO(freqres, accept_J=20,
                                   enable_debug_plot=show_ssm_iden_plot,
-                                  y_names=["w", "q", r"a_x", r"a_z"],)
+                                  y_names=["w", "q", r"a_x", r"a_z"], )
     J, ssm = ssm_iden.estimate(lat_dyn_state_space, syms, constant_defines={})
     ssm.check_stable()
     ssm_iden.draw_freq_res()
@@ -81,7 +81,7 @@ def lat_dyn_SIMO(freqres,show_freq_iden_plots=False, show_ssm_iden_plot=False):
 
 
 def post_analyse_ssm(pkl_name, show_freq_iden_plots=False):
-    #verf data full throttle 3100meter high 62.4m/s
+    # verf data full throttle 3100meter high 62.4m/s
     arr = np.load("../../XPlaneResearch/data/sweep_data_2017_12_10_20_08.npy")
     time_seq = arr[:, 0]
     ele_seq = arr[:, 1]
@@ -135,6 +135,7 @@ def post_analyse_ssm(pkl_name, show_freq_iden_plots=False):
         # plt.plot(time_seq, ele_seq, label="ele")
 
         plt.legend()
+        plt.show()
     time_seq1, ele_seq1 = time_seq_preprocess(time_seq, ele_seq,
                                               remove_drift_and_avg=True,
                                               enable_resample=True)
@@ -143,7 +144,11 @@ def post_analyse_ssm(pkl_name, show_freq_iden_plots=False):
         ssm = pickle.load(input)
 
         # ele_seq = np.zeros(ele_seq.shape)
-        t_seq, y_seq,x_out = ssm.response_by_u_seq(t_seq=time_seq1, u_seq=ele_seq1, X0=np.array([0, 0, 0, 0]))
+        t_seq, y_seq, x_out = ssm.response_by_u_seq(t_seq=time_seq1, u_seq=ele_seq1, X0=np.array(
+            [vx_seq[0] - U0, vz_seq[0] - W0, q_seq[0], theta_seq[0] - th0]))
+
+        plt.figure("ele")
+        plt.plot(t_seq, ele_seq1, label="data")
 
         plt.figure("Elevator->Y")
 
@@ -169,7 +174,6 @@ def post_analyse_ssm(pkl_name, show_freq_iden_plots=False):
         plt.legend()
         plt.title("q")
 
-
         plt.subplot(325)
         plt.plot(t_seq, y_seq[:, 2] + ax0, label="est")
         plt.plot(time_seq, ax_seq, label="data")
@@ -183,26 +187,26 @@ def post_analyse_ssm(pkl_name, show_freq_iden_plots=False):
 
         plt.figure("Elevator->x")
         plt.subplot(221)
-        plt.plot(t_seq, vx_seq,label="Data")
-        plt.plot(t_seq, x_out[:,0] + U0,label="Est")
+        plt.plot(t_seq, vx_seq, label="Data")
+        plt.plot(t_seq, x_out[:, 0] + U0, label="Est")
         plt.legend()
         plt.title("u")
 
         plt.subplot(222)
-        plt.plot(t_seq, vz_seq,label="Data")
-        plt.plot(t_seq, x_out[:,1] + W0,label="Est")
+        plt.plot(t_seq, vz_seq, label="Data")
+        plt.plot(t_seq, x_out[:, 1] + W0, label="Est")
         plt.legend()
         plt.title("w")
 
         plt.subplot(223)
         plt.plot(t_seq, q_seq, label="Data")
-        plt.plot(t_seq, x_out[:,2] , label="Est")
+        plt.plot(t_seq, x_out[:, 2], label="Est")
         plt.legend()
         plt.title("q")
 
         plt.subplot(224)
         plt.plot(t_seq, theta_seq, label="Data")
-        plt.plot(t_seq, x_out[:,3] + th0, label="Est")
+        plt.plot(t_seq, x_out[:, 3] + th0, label="Est")
         plt.legend()
         plt.title("th")
 
@@ -213,5 +217,5 @@ if __name__ == "__main__":
     pkl_name = "../data/sweep_data_2017_12_10_19_05_freqres.pkl"
     with open(pkl_name, 'rb') as inp:
         freqres = pickle.load(inp)
-        # lat_dyn_SIMO(freqres,show_freq_iden_plots=True)
+        #lat_dyn_SIMO(freqres)
         post_analyse_ssm("../data/SIMStateSpaceExample.pkl")

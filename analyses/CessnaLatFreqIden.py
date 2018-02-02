@@ -15,6 +15,7 @@ def lat_dyn_freq(fn,show_freq_iden_plots=True):
     arr = np.load(fn)
     print("Start analyse case {}".format(name))
     time_seq = arr[:, 0]
+    print("Time up to {}:{}".format(time_seq[0],time_seq[-1]))
     ele_seq = arr[:, 1]
     q_seq = arr[:, 4]
     vvi_seq = arr[:, 6]
@@ -67,16 +68,16 @@ def lat_dyn_freq(fn,show_freq_iden_plots=True):
         # plt.plot(time_seq, ele_seq, label="ele")
 
         plt.legend()
-        plt.figure("Ele->U(vx)")
-        simo_iden.plt_bode_plot(0)
+        # plt.figure("Ele->U(vx)")
+        # simo_iden.plt_bode_plot(0)
         plt.figure("Ele->W(vz)")
-        simo_iden.plt_bode_plot(1)
+        simo_iden.plt_bode_plot(0)
         plt.figure("Ele->Q")
-        simo_iden.plt_bode_plot(2)
+        simo_iden.plt_bode_plot(1)
         plt.figure("Ele->Ax")
-        simo_iden.plt_bode_plot(3)
+        simo_iden.plt_bode_plot(2)
         plt.figure("Ele->Az")
-        simo_iden.plt_bode_plot(4)
+        simo_iden.plt_bode_plot(3)
 
         plt.show()
 
