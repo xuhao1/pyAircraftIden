@@ -42,7 +42,11 @@ class GeneralAircraftCase(object):
         plt.show()
 
     def get_data_time_range(self, attr_names, t_min=0, t_max=0):
-        assert 0 < t_min < t_max < self.total_time
+        if t_max is None or t_max > self.total_time:
+            t_max =  self.total_time
+        if t_min is None:
+            t_min = 0
+        assert 0 <= t_min < t_max
         ptr_min = int(t_min * self.sample_rate)
         ptr_max = int(t_max * self.sample_rate)
 
@@ -52,6 +56,39 @@ class GeneralAircraftCase(object):
             arr = getattr(self, attr)
             ress.append(arr[ptr_min:ptr_max])
         return tuple(ress)
+
+    def get_data_time_range_list(self, attr_names, t_min=None, t_max=None):
+        if t_max is None or t_max > self.total_time:
+            t_max =  self.total_time
+        if t_min is None:
+            t_min = 0
+        assert 0 <= t_min < t_max
+
+        ptr_min = int(t_min * self.sample_rate)
+        ptr_max = int(t_max * self.sample_rate)
+
+        ress = []
+        for attr in attr_names:
+            assert hasattr(self, attr), "Case has no attr {}".format(attr)
+            arr = getattr(self, attr)
+            ress.append(arr[ptr_min:ptr_max])
+        return self.t_seq[ptr_min:ptr_max] , ress
+
+    def get_concat_data(self, time_ranges, attrs):
+        res = dict()
+        for attr in attrs:
+            attr_data = []
+            for t_min, t_max in time_ranges:
+                _, piece_data = self.get_data_time_range(
+                    [attr], t_min=t_min,
+                    t_max=t_max)
+                piece_data = remove_seq_average_and_drift(piece_data.copy())
+                attr_data.append(piece_data)
+            res[attr] = np.concatenate(attr_data)
+            datalen = res[attrs[0]].__len__()
+            totaltime = datalen / self.sample_rate
+            tseq = np.linspace(0, totaltime, datalen)
+        return totaltime, tseq, res
 
 
 # sensor_accel
@@ -114,6 +151,8 @@ class PX4AircraftCase(GeneralAircraftCase):
                 self.parse_actuator_controls(data_obj)
             elif data_obj.name == "vehicle_local_position":
                 self.parse_local_position_data(data_obj)
+            elif data_obj.name == "vehicle_iden_status":
+                self.parse_vehicle_iden_status(data_obj)
 
     def resample_data(self, t, *x_seqs):
         resampled_datas = []
@@ -197,18 +236,3 @@ class PX4AircraftCase(GeneralAircraftCase):
         self.climb_rate, self.alt = self.resample_data(t, roc, - alt)
 
 
-def get_concat_data(test_case: GeneralAircraftCase, time_ranges, attrs):
-    res = dict()
-    for attr in attrs:
-        attr_data = []
-        for t_min, t_max in time_ranges:
-            _, piece_data = test_case.get_data_time_range(
-                [attr], t_min=t_min,
-                t_max=t_max)
-            piece_data = remove_seq_average_and_drift(piece_data.copy())
-            attr_data.append(piece_data)
-        res[attr] = np.concatenate(attr_data)
-        datalen = res[attrs[0]].__len__()
-        totaltime = datalen / test_case.sample_rate
-        tseq = np.linspace(0, totaltime, datalen)
-    return totaltime, tseq, res

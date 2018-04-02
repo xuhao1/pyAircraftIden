@@ -157,7 +157,7 @@ class FreqIdenSIMO:
 
         freq, H, gamma2, gxx, gxy, gyy = self.get_freq_iden(index)
         h_amp, h_phase = FreqIdenSIMO.get_amp_pha_from_h(H)
-
+        plt.grid(which='both')
         plt.subplot(411)
         plt.grid(which='both')
         plt.semilogx(freq, 20 * np.log10(gxx), label='gxx')
@@ -183,6 +183,12 @@ class FreqIdenSIMO:
         plt.title("gamma2")
         plt.grid(which='both')
 
+        plt.figure("input")
+        plt.grid(which='both')
+        plt.semilogx(freq, 20 * np.log10(gxx), label='gxx')
+        plt.legend()
+
+        plt.figure("???")
         pass
 
     @staticmethod
