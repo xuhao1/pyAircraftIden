@@ -43,7 +43,7 @@ class GeneralAircraftCase(object):
 
     def get_data_time_range(self, attr_names, t_min=0, t_max=0):
         if t_max is None or t_max > self.total_time:
-            t_max =  self.total_time
+            t_max = self.total_time
         if t_min is None:
             t_min = 0
         assert 0 <= t_min < t_max
@@ -59,7 +59,7 @@ class GeneralAircraftCase(object):
 
     def get_data_time_range_list(self, attr_names, t_min=None, t_max=None):
         if t_max is None or t_max > self.total_time:
-            t_max =  self.total_time
+            t_max = self.total_time
         if t_min is None:
             t_min = 0
         assert 0 <= t_min < t_max
@@ -72,7 +72,7 @@ class GeneralAircraftCase(object):
             assert hasattr(self, attr), "Case has no attr {}".format(attr)
             arr = getattr(self, attr)
             ress.append(arr[ptr_min:ptr_max])
-        return self.t_seq[ptr_min:ptr_max] , ress
+        return self.t_seq[ptr_min:ptr_max], ress
 
     def get_concat_data(self, time_ranges, attrs):
         res = dict()
@@ -195,6 +195,14 @@ class PX4AircraftCase(GeneralAircraftCase):
         thr = data.data['control[3]']
         self.ail, self.ele, self.thr, self.rud = self.resample_data(t, ail, ele, thr, rud)
 
+    def parse_vehicle_iden_status(self, data: ULog.Data):
+        # ['timestamp', 'iden_start_time', 'iden_wait_time', 'inject_param1', 'inject_param2', 'inject_param3',
+        # 'inject_param4', 'inject_value', 'inject_channel', 'inject_signal_mode']
+        # print(data.data.keys())
+        t = data.data['timestamp'] / 1000000 - self.t_min
+        iden_start_time = data.data["iden_start_time"]
+        self.iden_start_time = self.resample_data(t,iden_start_time)
+
     def parse_attitude_data(self, data):
         # dict_keys(['timestamp', 'rollspeed', 'pitchspeed', 'yawspeed', 'q[0]', 'q[1]', 'q[2]', 'q[3]'])
         t = data.data['timestamp'] / 1000000 - self.t_min
@@ -234,5 +242,3 @@ class PX4AircraftCase(GeneralAircraftCase):
         roc = data.data['vz']
         alt = data.data['z']
         self.climb_rate, self.alt = self.resample_data(t, roc, - alt)
-
-
