@@ -30,7 +30,8 @@ def process_pitch_analyse(test_case: GeneralAircraftCase, time_ranges, win_num=N
     plt.show()
 
 
-def show_logs(px4_case: PX4AircraftCase,needed_data):
+def show_logs(px4_case: PX4AircraftCase):
+    needed_data = ['ele', 'q', 'thr', 'body_vx', "iden_start_time"]
     t_arr, data_list = px4_case.get_data_time_range_list(needed_data)
     data_list[-1] = data_list[-1]/10
     plt.figure("Ele")
@@ -43,7 +44,7 @@ def show_logs(px4_case: PX4AircraftCase,needed_data):
     for i in range(needed_data.__len__()):
         plt.plot(t_arr, data_list[i], label=needed_data[i])
     plt.legend()
-    # plt.show()
+    plt.show()
 
 
 def split_logs(px4_case:PX4AircraftCase):
@@ -72,7 +73,6 @@ def split_logs(px4_case:PX4AircraftCase):
 
 
 def join_data(data_splited, status):
-    needed_data = ['ele', 'q', 'thr', 'pitch', "iden_start_time"]
     joined_data_status = {}
     assert data_splited.__len__() == status.__len__(), "Status Length must equal to data_split but {} {}".format(
         data_splited.__len__(), status.__len__())
@@ -112,7 +112,7 @@ def draw_freq_response_on_fig(figure_name, label, freq, H, gamma2):
 
 
 def process_splited_data(test_case, joined_data_status,omg_min,omg_max,win_num=None):
-    needed_data = ['ele', 'q','thr',"climb_rate"]
+    needed_data = ['ele', 'q', 'thr', "body_vx", "body_vz","ax","az"]
     for key in joined_data_status:
         plt.figure("Data case: {}".format(key))
         total_time, t_data, datas = test_case.get_concat_data(joined_data_status[key], needed_data)
@@ -122,7 +122,7 @@ def process_splited_data(test_case, joined_data_status,omg_min,omg_max,win_num=N
         plt.grid(which='both')
         plt.legend()
         print("Process pitch rate")
-        iden = FreqIdenSIMO(t_data, omg_min, omg_max, datas['ele'], datas['q'],datas["climb_rate"],
+        iden = FreqIdenSIMO(t_data, omg_min, omg_max, datas['ele'], datas['q'], datas["body_vx"], datas["body_vz"],datas["ax"],datas["az"],
                              uniform_input=True, win_num=None)#,assit_input=datas["thr"])
 
         # freq, H, gamma2, gxx, gxy, gyy = iden.get_freq_iden(0)
@@ -131,8 +131,14 @@ def process_splited_data(test_case, joined_data_status,omg_min,omg_max,win_num=N
         # draw_freq_response_on_fig("ele->climb_rate", key,freq, H, gamma2)
         plt.figure("ele_q")
         iden.plt_bode_plot(0, label=key)
-        plt.figure("ele_climbrate")
+        plt.figure("ele_body_vx")
         iden.plt_bode_plot(1, label=key)
+        plt.figure("ele_body_vz")
+        iden.plt_bode_plot(2, label=key)
+        plt.figure("ele_body_ax")
+        iden.plt_bode_plot(3, label=key)
+        plt.figure("ele_body_az")
+        iden.plt_bode_plot(4, label=key)
 
     plt.show()
 
@@ -144,12 +150,11 @@ if __name__ == "__main__":
         print(sys.argv)
         path = sys.argv[2]
     px4_case = PX4AircraftCase(path)
-    # show_logs(px4_case, needed_data)
+    # show_logs(px4_case)
     data_splited = split_logs(px4_case)
     status = [
-        "1m/s", "1m/s", "1m/s", "1m/s",
-        "2m/s", "2m/s", "2m/s", "2m/s",
-        "3m/s", "3m/s", "3m/s"
+        "1m/s", "1m/s", "1m/s", "1m/s", "1m/s", "1m/s",
+        "2m/s", "2m/s", "2m/s", "2m/s", "2m/s"
     ]
     res = join_data(data_splited, status)
     process_splited_data(px4_case, res, 6, 60)

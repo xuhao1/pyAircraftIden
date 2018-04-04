@@ -44,9 +44,8 @@ class CompositeWindow(object):
             Gyyc = x[1]
             GxyRe = x[2]
             GxyIm = x[3]
-
+            coh_c = (GxyRe * GxyRe + GxyIm * GxyIm) / (math.fabs(Gxxc) * math.fabs(Gyyc))
             def Ji(i):
-                coh_c = (GxyRe * GxyRe + GxyIm * GxyIm) / (Gxxc * Gyyc)
                 ji = pow((Gxxc - gxxi[i][freq_ptr]) / gxx_stackrel, 2) + \
                      pow((Gyyc - gyyi[i][freq_ptr]) / gyy_stackrel, 2) + \
                      pow((GxyRe - gxyi[i][freq_ptr].real) / gxy_stackrel.real, 2) + \
@@ -57,11 +56,44 @@ class CompositeWindow(object):
             Jarr = (np.vectorize(Ji))(range(self.win_slice_num))
             return np.sum(Jarr)
 
+        def Jder(x):
+            Gxxc = x[0]
+            Gyyc = x[1]
+            GxyRe = x[2]
+            GxyIm = x[3]
+
+            gxx_stackrel = self.gxx_stackrel[freq_ptr]
+            gyy_stackrel = self.gyy_stackrel[freq_ptr]
+            gxy_stackrel = self.gxy_stackrel[freq_ptr]
+            coheren_stackrel = self.coheren_stackrel[freq_ptr]
+            coh_c = (GxyRe * GxyRe + GxyIm * GxyIm) / (math.fabs(Gxxc) * math.fabs(Gyyc))
+            Gxynorm2 = GxyRe*GxyRe + GxyIm * GxyIm
+
+            def Jderi(i):
+                eta = 20 * (coh_c - cohereni[i][freq_ptr])/ coheren_stackrel
+                Wi = self.Ws[i][freq_ptr]
+                Jder = [
+                    2*(Gxxc-gxxi[i][freq_ptr])/(gxx_stackrel*gxx_stackrel) + \
+                        eta * - Gxynorm2/(Gxxc*Gxxc*Gyyc),
+                    2*(Gyyc-gyyi[i][freq_ptr])/(gyy_stackrel*gyy_stackrel) + \
+                        eta * - Gxynorm2/(Gxxc*Gyyc*Gyyc),
+                    2*(GxyRe-gxyi[i][freq_ptr].real)/(gxy_stackrel.real*gxy_stackrel.real) + \
+                        eta * (2*GxyRe)/(Gxxc*Gyyc),
+                    2*(GxyIm-gxyi[i][freq_ptr].imag)/(gxy_stackrel.imag*gxy_stackrel.imag) + \
+                        eta * (2*GxyIm)/(Gxxc*Gyyc),
+                ]
+                return np.array(Jder) * Wi
+
+            ret = np.array([0, 0, 0, 0])
+            for i in range(self.win_slice_num):
+                ret = Jderi(i) + ret
+            return ret
+
         x0 = [gxx_stackrel,
               gyy_stackrel,
               gxy_stackrel.real,
               gxy_stackrel.imag]
-        ret = minimize(Jfunc, np.array(x0))
+        ret = minimize(Jfunc, np.array(x0), jac=Jder, method="BFGS")
 
         return ret.x[0], ret.x[1], ret.x[2] + ret.x[3] * 1J
 

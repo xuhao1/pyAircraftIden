@@ -157,20 +157,20 @@ class FreqIdenSIMO:
 
         freq, H, gamma2, gxx, gxy, gyy = self.get_freq_iden(index)
         h_amp, h_phase = FreqIdenSIMO.get_amp_pha_from_h(H)
-        plt.grid(which='both')
         plt.subplot(411)
-        plt.grid(which='both')
         plt.semilogx(freq, 20 * np.log10(gxx), label=label+'gxx')
         plt.semilogx(freq, 20 * np.log10(gyy), label=label+'gyy')
         plt.semilogx(freq, 20 * np.log10(np.absolute(gxy)), label=label+'gxy')
         plt.title("Gxx & Gyy Tilde of ele and theta")
         plt.legend()
+        plt.grid(which='both')
 
         plt.subplot(412)
         plt.semilogx(freq, h_amp, label=label)
         plt.title("H Amp")
         plt.legend()
         plt.grid(which='both')
+
         plt.subplot(413)
         plt.semilogx(freq, h_phase, label=label)
         plt.title("H Phase")
