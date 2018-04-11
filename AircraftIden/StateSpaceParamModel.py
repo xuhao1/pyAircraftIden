@@ -24,7 +24,9 @@ class StateSpaceParamModel(object):
         self.s = sp.symbols('s')
 
         self.pro_calc()
-
+        self.init_new_params()
+        
+    def init_new_params(self):
         self.new_params_raw_defines = dict()
         self.new_params_raw_pos = dict()
         self.new_params_list = list()
@@ -85,6 +87,7 @@ class StateSpaceParamModel(object):
         pass
 
     def load_constant_defines(self, constant_syms):
+        self.init_new_params()
         A = self.A.evalf(subs=constant_syms)
         B = self.B.evalf(subs=constant_syms)
         H0 = self.H0.evalf(subs=constant_syms)
@@ -112,6 +115,10 @@ class StateSpaceParamModel(object):
         # print("Solving equs {}".format(equs))
         # print("Unknown {}".format(self.syms))
         solvs = sp.solve(equs, tuple(self.syms))
+        print(solvs)
+        if isinstance(solvs,dict):
+            assert solvs.__len__() == self.syms.__len__(), "solvs {} cannot recover syms {}".format(solvs, self.syms)
+            return solvs
         assert solvs[0].__len__() == self.syms.__len__(), "solvs {} cannot recover syms {}".format(solvs, self.syms)
         return dict(zip(self.syms, solvs[0]))
 

@@ -13,7 +13,7 @@ import time
 
 class StateSpaceIdenSIMO(object):
     def __init__(self, freqres, nw=20, enable_debug_plot=False, max_sample_times=20, accept_J=5,
-                 y_names=None):
+                 y_names=None, reg = 1.0):
         self.freq = freqres.freq
         self.Hs = freqres.Hs
         self.wg = 1.0
@@ -31,10 +31,22 @@ class StateSpaceIdenSIMO(object):
 
         self.x_best = None
         self.J_min = -1
+        
+        self.reg = reg
 
         self.fig = None
-
-
+    
+    def print_res(self):
+        assert self.x_best is not None, "You must estimate first"
+        x_syms = self.sspm.solve_params_from_newparams(self.x_best)
+        print(x_syms)
+        sym_sub = dict(zip(self.x_syms, self.x_best))
+        ssm = self.sspm.get_ssm_by_syms(sym_sub, using_converted=True)
+        print("A")
+        print(ssm.A)
+        print("B")
+        print(ssm.B)
+        
     def estimate(self, sspm: StateSpaceParamModel, syms, omg_min=None, omg_max=None, constant_defines=None):
         assert self.y_dims == sspm.y_dims, "StateSpaceModel dim : {} need to iden must have same dims with Hs {}".format(
             sspm.y_dims, self.y_dims)
@@ -73,8 +85,8 @@ class StateSpaceIdenSIMO(object):
             result = pool.apply_async(self.solve, (i,))
             results.append(result)
 
-        J_min = 100000
-        x = None
+        self.J_min = 100000
+        self.x_best = None
         should_exit_pool = False
         while not should_exit_pool:
             if results.__len__() == 0:
@@ -82,24 +94,32 @@ class StateSpaceIdenSIMO(object):
                 break
             for i in range(results.__len__()):
                 thr = results[i]
-                if thr.ready():
-                    if thr.successful():
-                        J, x_tmp = thr.get()
-                        if J < J_min:
-                            J_min = J
-                            x = x_tmp
-                            print("Found new better {}".format(J))
-                        if J < self.accept_J:
-                            print("Terminate pool")
-                            pool.terminate()
-                            print("Using J {} x {}".format(J_min, x))
-                            return J_min, x
-                        del results[i]
-                        break
+                if thr.ready() and thr.successful():
+                    J, x_tmp = thr.get()
+                    if J < self.J_min:
+                        self.J_min = J
+                        self.x_best = x_tmp
+                        print("Found new better {}".format(J))
+
+                        if self.enable_debug_plot:
+                            pass
+                            #print("Will Print,sleep 5")
+                            #self.draw_freq_res()
+                            #plt.show()
+                            #time.sleep(5)
+                            
+                    if J < self.accept_J:
+                        print("Terminate pool")
+                        pool.terminate()
+                        print("Using J {} x {}".format(self.J_min, self.x_best))
+                        return self.J_min, self.x_best
+                    
+                    del results[i]
+                    break
 
             time.sleep(0.01)
-        print("Using J {} x {}".format(J_min, x))
-        return J_min, x
+        print("Using J {} x {}".format(self.J_min, self.x_best))
+        return self.J_min, self.x_best
 
     def solve(self, id=0):
         sspm = copy.deepcopy(self.sspm)
@@ -153,7 +173,7 @@ class StateSpaceIdenSIMO(object):
             return J
 
         omg_ptr_cost_func = np.vectorize(cost_func_at_omg_ptr)
-        J = np.average(omg_ptr_cost_func(self.est_omg_ptr_list)) * 20
+        J = np.average(omg_ptr_cost_func(self.est_omg_ptr_list)) * 20 + self.reg * np.linalg.norm(x,2)
         return J
 
     def constrain_func(self, sspm: StateSpaceParamModel, x):

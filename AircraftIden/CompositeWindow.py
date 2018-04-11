@@ -111,12 +111,13 @@ class CompositeWindow(object):
         cpu_use = cpu_count() - 1
         if cpu_use < 1:
             cpu_use = 1
-
-        ret = Pool(cpu_use).map(self.process_freq, range(self.freq.__len__()))
+        pool = Pool(cpu_use)
+        ret = pool.map(self.process_freq, range(self.freq.__len__()))
         for gxx_ci, gyy_ci, gxy_ci in ret:
-            gxx_c.append(gxx_ci)
-            gyy_c.append(gyy_ci)
-            gxy_c.append(gxy_ci)
+            gxx_c.append(gxx_ci.copy())
+            gyy_c.append(gyy_ci.copy())
+            gxy_c.append(gxy_ci.copy())
+        pool.terminate()
 
         gxx_c = np.array(gxx_c)
         gxy_c = np.array(gxy_c)

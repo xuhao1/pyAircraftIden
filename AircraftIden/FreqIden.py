@@ -1,7 +1,3 @@
-import matplotlib
-
-matplotlib.use("Qt5Agg")
-
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.interpolate import interp1d
@@ -141,12 +137,13 @@ class FreqIdenSIMO:
 
         return freq, H, gamma2, gxx, gxy, gyy
 
-    def get_freqres(self):
+    def get_freqres(self, indexs = None):
         Hs = []
         coheres = []
         freq = None
-
-        for i in range(self.y_seqs.__len__()):
+        if indexs is None:
+            indexs = range(self.y_seqs.__len__())
+        for i in indexs:
             freq, h, co, _, _, _ = self.get_freq_iden(i)
             Hs.append(h)
             coheres.append(co)

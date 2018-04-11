@@ -84,7 +84,9 @@ class GeneralAircraftCase(object):
                 _, piece_data = self.get_data_time_range(
                     [attr], t_min=t_min,
                     t_max=t_max)
-                piece_data = remove_seq_average_and_drift(piece_data.copy())
+                # piece_data = remove_seq_average_and_drift(piece_data.copy())
+                piece_data = piece_data.copy() - np.average(piece_data)
+                # print("Do not remove drift")
                 attr_data.append(piece_data)
             res[attr] = np.concatenate(attr_data)
             datalen = res[attrs[0]].__len__()
@@ -137,9 +139,12 @@ class PX4AircraftCase(GeneralAircraftCase):
             raise "Un recognize log type {}".format(log_type)
 
     def parse_ulog(self, fn):
-        open(fn)
-        self.ulog = ULog(fn)
-
+        try:
+            self.ulog = ULog(fn)
+        except Exception as e:
+            print("Error while parse ulog")
+            print(e)
+            exit(-1)
         for data_obj in self.ulog.data_list:  # type:ULog.Data
             if data_obj.name == "sensor_gyro":
                 # We use gyro to setup time seq
@@ -163,14 +168,16 @@ class PX4AircraftCase(GeneralAircraftCase):
     def resample_data(self, t, *x_seqs):
         resampled_datas = []
         for x_seq in x_seqs:
+            func = lambda x: 0 if np.isnan(x) or np.isinf(x) else x
+            x_seq = (np.vectorize(func))(x_seq)
             assert len(x_seq) == len(x_seqs[0]), "Length of data seq must be euqal to time seq"
-
-            inte_func = interp1d(t, x_seq, bounds_error=False)
+            inte_func = interp1d(t, x_seq, bounds_error=False, kind='linear', fill_value=0)
             data = inte_func(self.t_seq)
             # TODO:deal with t< t_min and t > t_max
-            # zi = signal.lfilter_zi(b, a)
-            # z, _ = signal.lfilter(b, a, data, zi=zi * data[0])
+
+            data = (np.vectorize(func))(data)
             resampled_datas.append(data)
+
         if resampled_datas.__len__() > 1:
             return tuple(resampled_datas)
         else:
@@ -208,6 +215,7 @@ class PX4AircraftCase(GeneralAircraftCase):
         ele = data.data['control[1]']
         rud = data.data['control[2]']
         thr = data.data['control[3]']
+
         self.ail, self.ele, self.thr, self.rud = self.resample_data(t, ail, ele, thr, rud)
 
     def parse_vehicle_iden_status(self, data: ULog.Data):
@@ -273,12 +281,16 @@ class PX4AircraftCase(GeneralAircraftCase):
         for i in range(len(self.t_seq)):
             q0, q1, q2, q3 = self.q0[i], self.q1[i], self.q2[i], self.q3[i]
             quat = quaternion.Quaternion([q0, q1, q2, q3])
-            quat.normalize()
-
+            try:
+                quat.normalize()
+            except Exception as e:
+                print(e)
+                body_vx.append(0)
+                body_vy.append(0)
+                body_vz.append(0)
+                continue
             local_vel = Vector3([self.vx[i], self.vy[i], self.vz[i]])
-            # print(quat)
-            # print(local_vel)
-            if math.isnan(q0) or math.isnan(self.vx[i]):
+            if math.isnan(q0) or math.isnan(quat.q.data[0]) or math.isnan(self.vx[i]):
                 body_vx.append(0)
                 body_vy.append(0)
                 body_vz.append(0)
