@@ -62,7 +62,7 @@ class StateSpaceIdenSIMO(object):
 
         J, x = self.parallel_solve(sspm)
         x_syms = sspm.solve_params_from_newparams(x)
-        print("J : {} syms {}".format(J, x_syms))
+        # print("J : {} syms {}".format(J, x_syms))
 
         self.x_best = x
         self.J_min = J
@@ -109,16 +109,16 @@ class StateSpaceIdenSIMO(object):
                             #time.sleep(5)
                             
                     if J < self.accept_J:
-                        print("Terminate pool")
+                        # print("Terminate pool")
                         pool.terminate()
-                        print("Using J {} x {}".format(self.J_min, self.x_best))
+                        # print("Using J {} x {}".format(self.J_min, self.x_best))
                         return self.J_min, self.x_best
                     
                     del results[i]
                     break
 
             time.sleep(0.01)
-        print("Using J {} x {}".format(self.J_min, self.x_best))
+        # print("Using J {} x {}".format(self.J_min, self.x_best))
         return self.J_min, self.x_best
 
     def solve(self, id=0):
@@ -132,7 +132,7 @@ class StateSpaceIdenSIMO(object):
         ret = minimize(f, x0,constraints=con,options=opts)
         x = ret.x.copy()
         J = ret.fun
-        print("exit id {} J:{}".format(id, J))
+        # print("exit id {} J:{}".format(id, J))
         return J, x
 
     def cost_func(self, sspm: StateSpaceParamModel, x):

@@ -115,7 +115,7 @@ class StateSpaceParamModel(object):
         # print("Solving equs {}".format(equs))
         # print("Unknown {}".format(self.syms))
         solvs = sp.solve(equs, tuple(self.syms))
-        print(solvs)
+        # print(solvs)
         if isinstance(solvs,dict):
             assert solvs.__len__() == self.syms.__len__(), "solvs {} cannot recover syms {}".format(solvs, self.syms)
             return solvs

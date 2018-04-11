@@ -76,8 +76,10 @@ class GeneralAircraftCase(object):
             ress.append(arr[ptr_min:ptr_max])
         return self.t_seq[ptr_min:ptr_max], ress
 
-    def get_concat_data(self, time_ranges, attrs):
+    def get_concat_data(self, time_ranges, attrs, return_trimed = True):
         res = dict()
+        count = 0
+        sumup = 0
         for attr in attrs:
             attr_data = []
             for t_min, t_max in time_ranges:
@@ -85,7 +87,10 @@ class GeneralAircraftCase(object):
                     [attr], t_min=t_min,
                     t_max=t_max)
                 # piece_data = remove_seq_average_and_drift(piece_data.copy())
-                piece_data = piece_data.copy() - np.average(piece_data)
+                if return_trimed:
+                    piece_data = piece_data.copy() - np.average(piece_data)
+                else:
+                    piece_data = piece_data.copy()
                 # print("Do not remove drift")
                 attr_data.append(piece_data)
             res[attr] = np.concatenate(attr_data)
