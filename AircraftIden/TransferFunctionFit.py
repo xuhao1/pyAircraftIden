@@ -5,7 +5,68 @@ import matplotlib.pyplot as plt
 from scipy.optimize import minimize, basinhopping
 import scipy.signal as signal
 import time
+import sympy as sp
+import sympy as sp
+from sympy import poly
+import numpy as np
+import math
+import matplotlib.pyplot as plt
 
+class TransferFunctionModel(object):
+    #TransferFunction Model, num and den is coefficent
+    def __init__(self,num,den,tau = 0):
+        self.num = num
+        self.den = den
+        self.tau = tau
+        pass
+    
+    def freqres(self, w, unwarp = False):
+        
+        b = self.num
+        a = self.den
+        tau = self.tau
+        s = 1j * w
+        h = np.polyval(b, s) * np.exp(-tau * s) / np.polyval(a, s)
+        print(np.absolute(h))
+        h = np.complex64(h)
+        amp = 20 * np.log10(np.absolute(h))
+        pha = None
+        if unwarp:
+            pha = np.unwrap(np.arctan2(h.imag, h.real)) * 180 / math.pi
+        else:
+            pha = np.arctan2(h.imag, h.real) * 180 / math.pi
+        return amp, pha
+    
+    
+    def plot(self, freq = None):
+        if freq is None:
+            freq = np.linspace(1.0,10,10)
+        print(freq)
+        amp,pha = self.freqres(freq,True)
+        plt.semilogx(freq,amp,label="Amp")
+        plt.semilogx(freq,pha,label="Pha")
+
+    
+
+class TransferFunctionParamModel(object):
+    #A TransferFunction with unknown parameters
+    
+    def __init__(self,num,den,tau = 0):
+        self.num = num
+        self.den = den
+        self.tau = tau
+        self.s = sp.symbols('s')
+    
+    def transfer_function_by_dict(self, sym_dict):
+        s = self.s
+        num_formula =  self.num.subs(sym_dict)
+        num = poly(num_formula,s).all_coeffs()
+
+        den_formula =  self.den.subs(sym_dict)
+        den = poly(den_formula,s).all_coeffs()
+        
+        return TransferFunctionModel(num,den,self.tau)
+    
 
 def freqres(b, a, tau, w):
     s = 1j * w
@@ -24,28 +85,47 @@ def bodeplot(b, a, tau, ws):
     pha = np.unwrap(np.arctan2(h.imag, h.real)) * 180 / math.pi
     return ws, amp, pha
 
+class TranserFunctionModel(object):
+    #TransferFunction Model, num and den is coefficent
+    def __init__(self,num,den):
+    
 
+
+class TransferFunctionParamModel(object):
+    #A TransferFunction with unknown parameters
+    
+    def __init__(self,num,den):
+        self.num = num
+        self.den = den
+    
+    def transfer_function_by_dict(self, sym_dict):
+        num_formula =  self.num.evalf(subs={sym_dict})
+        num = a = Poly(num_formula, sp.sym)
+        den_formula =  self.den.evalf(subs={sym_dict})
+    
 class TransferFunctionFit(object):
-    def __init__(self, freq, H, coheren, num_ord, den_ord, nw=20, enable_debug_plot=False):
+    def __init__(self, freq, H, coheren, num_ord, den_ord, nw=20, enable_debug_plot=False, iter_times = 100,has_addition_integral = False):
         # num/den
-        self.num_ord = num_ord
-        self.den_ord = den_ord
+        self.num_ord = num_ord + 1
+        self.den_ord = den_ord + 1
         self.nw = nw
         self.source_freq = freq
         self.source_H = H
         self.source_coheren = coheren
         self.wg = 1.0
         self.wp = 0.01745
-        self.iter_times = 100
+        self.iter_times = iter_times
 
         self.accept_J = 10
 
         self.est_omg_ptr_list = []
         self.enable_debug_plot = enable_debug_plot
+        
+        self.has_addition_integral = has_addition_integral
 
     def cost_func_at_omg_ptr(self, num, den, tau, omg_ptr):
         omg = self.source_freq[omg_ptr]
-        amp, pha = freqres(num, den, tau, omg)
+        amp, pha = freqres(num, den, tau, omg, self.has_addition_integral)
 
         h = self.source_H[omg_ptr]
         h_amp = 20 * np.log10(np.absolute(h))
@@ -128,7 +208,7 @@ class TransferFunctionFit(object):
         plt.ioff()
         plt.close("resolving..")
 
-        print("J {} num {} den {} tau {}".format(J, self.num, self.den, self.tau))
+        print("J {} num {} den {} tau {}".format(J_min, self.num, self.den, self.tau))
         return self.num, self.den, self.tau
 
     def setup_transferfunc(self, x):
@@ -154,7 +234,7 @@ class TransferFunctionFit(object):
         x0[-1] = 0.00
         return x0
 
-    def plot(self):
+    def plot(self, name = ""):
         H = self.source_H
         freq = self.source_freq
         num = self.num
@@ -167,21 +247,21 @@ class TransferFunctionFit(object):
         plt.subplot(311)
         plt.semilogx(freq, h_amp, label='source')
         plt.semilogx(w, mag, label='fit')
-        plt.title("H Amp")
+        plt.title(name + "H Amp")
         plt.grid(which='both')
         plt.legend()
 
         plt.subplot(312)
         plt.semilogx(freq, h_phase, label='source')
         plt.semilogx(w, phase, label='fit')
-        plt.title("H Phase")
+        plt.title(name + "H Phase")
         plt.grid(which='both')
         plt.legend()
 
         plt.subplot(313)
         plt.semilogx(freq, self.source_coheren, label="coherence of xy")
         plt.legend()
-        plt.title("gamma2")
+        plt.title(name + "gamma2")
         plt.grid(which='both')
 
         pass

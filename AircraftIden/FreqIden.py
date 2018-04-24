@@ -151,36 +151,37 @@ class FreqIdenSIMO:
 
     def plt_bode_plot(self, index=0, label=""):
         # f, ax = plt.subplots()
-
+        
+        
         freq, H, gamma2, gxx, gxy, gyy = self.get_freq_iden(index)
         h_amp, h_phase = FreqIdenSIMO.get_amp_pha_from_h(H)
-        plt.subplot(411)
-        plt.semilogx(freq, 20 * np.log10(gxx), label=label+'gxx')
-        plt.semilogx(freq, 20 * np.log10(gyy), label=label+'gyy')
-        plt.semilogx(freq, 20 * np.log10(np.absolute(gxy)), label=label+'gxy')
-        plt.title("Gxx & Gyy Tilde of ele and theta")
-        plt.legend()
-        plt.grid(which='both')
+        ax1 = plt.subplot(411)
+        ax1.semilogx(freq, 20 * np.log10(gxx), label=label+'gxx')
+        ax1.semilogx(freq, 20 * np.log10(gyy), label=label+'gyy')
+        ax1.semilogx(freq, 20 * np.log10(np.absolute(gxy)), label=label+'gxy')
+        ax1.title("Gxx & Gyy Tilde of ele and theta")
+        ax1.legend()
+        ax1.grid(which='both')
 
-        plt.subplot(412)
-        plt.semilogx(freq, h_amp, label=label)
-        plt.title("H Amp")
-        plt.legend()
-        plt.grid(which='both')
+        ax2 = plt.subplot(412)
+        ax2.semilogx(freq, h_amp, label=label)
+        ax2.title("H Amp")
+        ax2.legend()
+        ax2.grid(which='both')
 
-        plt.subplot(413)
-        plt.semilogx(freq, h_phase, label=label)
-        plt.title("H Phase")
-        plt.legend()
-        plt.grid(which='both')
+        ax3 = plt.subplot(413)
+        ax3.semilogx(freq, h_phase, label=label)
+        ax3.title("H Phase")
+        ax3.legend()
+        ax3.grid(which='both')
 
-        plt.subplot(414)
-        plt.semilogx(freq, gamma2, label=label+"coherence")
+        ax4 = plt.subplot(414)
+        ax4.semilogx(freq, gamma2, label=label+"coherence")
         if self.enable_assit_input:
-            plt.semilogx(freq, self.get_cross_coherence(-1, -2), label='coherece of x and assit input')
-        plt.legend()
-        plt.title("gamma2")
-        plt.grid(which='both')
+            ax4.semilogx(freq, self.get_cross_coherence(-1, -2), label='coherece of x and assit input')
+        ax4.legend()
+        ax4.title("gamma2")
+        ax4.grid(which='both')
 
 
     @staticmethod

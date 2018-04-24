@@ -95,7 +95,7 @@ class CompositeWindow(object):
               gxy_stackrel.imag]
         ret = minimize(Jfunc, np.array(x0), jac=Jder, method="BFGS")
 
-        return ret.x[0], ret.x[1], ret.x[2] + ret.x[3] * 1J
+        return np.absolute(ret.x[0]), np.absolute(ret.x[1]), ret.x[2] + ret.x[3] * 1J
 
     def estimate(self):
         gxx_c = []
