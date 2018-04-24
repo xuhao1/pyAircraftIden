@@ -118,6 +118,7 @@ class StateSpaceIdenSIMO(object):
                     break
 
             time.sleep(0.01)
+        pool.terminate()
         # print("Using J {} x {}".format(self.J_min, self.x_best))
         return self.J_min, self.x_best
 
