@@ -2,9 +2,10 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy.interpolate import interp1d
 import math
-from scipy import signal
 from AircraftIden.SpectrumAnalyse import MultiSignalSpectrum
 import copy
+from AircraftIden.CompositeWindow import CompositeWindow
+from AircraftIden.FreqResponse import FreqResponse
 
 
 def remove_seq_average_and_drift(x_seq):
@@ -26,6 +27,7 @@ def time_seq_preprocess(time_seq, *x_seqs, enable_resample=True, remove_drift_an
     resampled_datas = [tnew]
     for x_seq in x_seqs:
         assert len(x_seq) == len(tnew), "Length of data seq must be euqal to time seq"
+        x_seq = copy.deepcopy(x_seq)
         if remove_drift_and_avg:
             x_seq = remove_seq_average_and_drift(x_seq)
         data = x_seq
@@ -37,10 +39,13 @@ def time_seq_preprocess(time_seq, *x_seqs, enable_resample=True, remove_drift_an
 
 
 class FreqIdenSIMO:
-    def __init__(self, time_seq, omg_min, omg_max, x_seq, *y_seqs, win_num=16, uniform_input=False, assit_input=None):
+    def __init__(self, time_seq, omg_min, omg_max, x_seq, *y_seqs, win_num=None, uniform_input=False, assit_input=None):
 
         self.time_seq, self.x_seq = time_seq_preprocess(time_seq, x_seq, remove_drift_and_avg=True,
                                                         enable_resample=not (uniform_input))
+        self.trims = []
+        for y_seq in y_seqs:
+            self.trims.append(y_seq[0])
         _, *y_seqs = time_seq_preprocess(time_seq, *y_seqs, remove_drift_and_avg=True,
                                          enable_resample=not (uniform_input))
         self.y_seqs = list(y_seqs)
@@ -57,12 +62,22 @@ class FreqIdenSIMO:
         self.omg_min = omg_min
         self.omg_max = omg_max
 
-        datas = copy.deepcopy(self.y_seqs)
-        if self.enable_assit_input:
-            datas.append(self.x2_seq)
-        datas.append(self.x_seq.copy())
-        print("Start calc spectrum for data: totalTime{} sample rate {}".format(self.time_len, self.sample_rate))
-        self.spectrumAnal = MultiSignalSpectrum(self.sample_rate, omg_min, omg_max, datas, win_num)
+        if win_num is None:
+            self.using_composite = True
+        else:
+            self.using_composite = False
+
+        if self.using_composite:
+            self.composes = [CompositeWindow(self.x_seq, y_seq, self.sample_rate, omg_min, omg_max)
+                             for y_seq in self.y_seqs]
+        else:
+            datas = copy.deepcopy(self.y_seqs)
+            if self.enable_assit_input:
+                datas.append(self.x2_seq)
+            datas.append(self.x_seq.copy())
+            print("Start calc spectrum for data: totalTime{} sample rate {}".format(self.time_len, self.sample_rate))
+
+            self.spectrumAnal = MultiSignalSpectrum(self.sample_rate, omg_min, omg_max, datas, win_num)
 
     def get_cross_coherence(self, index1, index2):
         # Get cross coherence only works when there is a assit input
@@ -100,64 +115,74 @@ class FreqIdenSIMO:
             return 1
 
     def get_freq_iden(self, y_index=0):
-        freq, gxx = self.spectrumAnal.get_gxx_by_index(-1)
-        if self.enable_assit_input:
-            gxx = gxx * self.get_assit_xx_norm()
-        _, gxy = self.spectrumAnal.get_gxy_by_index(-1, y_index)
+        if not self.using_composite:
+            freq, gxx = self.spectrumAnal.get_gxx_by_index(-1)
 
-        if self.enable_assit_input:
-            gxy = gxy * self.get_assit_xy_norm(y_index)
+            if self.enable_assit_input:
+                gxx = gxx * self.get_assit_xx_norm()
+            _, gxy = self.spectrumAnal.get_gxy_by_index(-1, y_index)
 
-        _, gyy = self.spectrumAnal.get_gxx_by_index(y_index)
-        if self.enable_assit_input:
-            gyy = gyy * self.get_assit_yy_norm(y_index)
+            if self.enable_assit_input:
+                gxy = gxy * self.get_assit_xy_norm(y_index)
+
+            _, gyy = self.spectrumAnal.get_gxx_by_index(y_index)
+        else:
+            freq = self.composes[y_index].freq
+            gxx = self.composes[y_index].gxx
+            gxy = self.composes[y_index].gxy
+            gyy = self.composes[y_index].gyy
+
         H = FreqIdenSIMO.get_h_from_gxy_gxx(gxy, gxx)
         gamma2 = FreqIdenSIMO.get_coherence(gxx, gxy, gyy)
+
         return freq, H, gamma2, gxx, gxy, gyy
 
-    def get_all_idens(self):
+    def get_freqres(self, indexs = None):
         Hs = []
         coheres = []
         freq = None
-
-        for i in range(self.y_seqs.__len__()):
+        if indexs is None:
+            indexs = range(self.y_seqs.__len__())
+        for i in indexs:
             freq, h, co, _, _, _ = self.get_freq_iden(i)
             Hs.append(h)
             coheres.append(co)
-        return freq,Hs,coheres
+        return FreqResponse(freq, Hs, coheres,self.trims)
 
-    def plt_bode_plot(self, index=0):
+    def plt_bode_plot(self, index=0, label=""):
         # f, ax = plt.subplots()
-
+        
+        
         freq, H, gamma2, gxx, gxy, gyy = self.get_freq_iden(index)
         h_amp, h_phase = FreqIdenSIMO.get_amp_pha_from_h(H)
+        ax1 = plt.subplot(411)
+        ax1.semilogx(freq, 20 * np.log10(gxx), label=label+'gxx')
+        ax1.semilogx(freq, 20 * np.log10(gyy), label=label+'gyy')
+        ax1.semilogx(freq, 20 * np.log10(np.absolute(gxy)), label=label+'gxy')
+        ax1.title("Gxx & Gyy Tilde of ele and theta")
+        ax1.legend()
+        ax1.grid(which='both')
 
-        plt.subplot(411)
-        plt.grid(which='both')
-        plt.semilogx(freq, 20 * np.log10(gxx), label='gxx')
-        plt.semilogx(freq, 20 * np.log10(gyy), label='gyy')
-        plt.semilogx(freq, 20 * np.log10(np.absolute(gxy)), label='gxy')
-        plt.title("Gxx & Gyy Tilde of ele and theta")
-        plt.legend()
+        ax2 = plt.subplot(412)
+        ax2.semilogx(freq, h_amp, label=label)
+        ax2.title("H Amp")
+        ax2.legend()
+        ax2.grid(which='both')
 
-        plt.subplot(412)
-        plt.semilogx(freq, h_amp)
-        plt.title("H Amp")
-        plt.grid(which='both')
-        plt.subplot(413)
-        plt.semilogx(freq, h_phase)
-        plt.title("H Phase")
-        plt.grid(which='both')
+        ax3 = plt.subplot(413)
+        ax3.semilogx(freq, h_phase, label=label)
+        ax3.title("H Phase")
+        ax3.legend()
+        ax3.grid(which='both')
 
-        plt.subplot(414)
-        plt.semilogx(freq, gamma2, label="coherence of xy")
+        ax4 = plt.subplot(414)
+        ax4.semilogx(freq, gamma2, label=label+"coherence")
         if self.enable_assit_input:
-            plt.semilogx(freq, self.get_cross_coherence(-1, -2), label='coherece of x and assit input')
-        plt.legend()
-        plt.title("gamma2")
-        plt.grid(which='both')
+            ax4.semilogx(freq, self.get_cross_coherence(-1, -2), label='coherece of x and assit input')
+        ax4.legend()
+        ax4.title("gamma2")
+        ax4.grid(which='both')
 
-        pass
 
     @staticmethod
     def get_h_from_gxy_gxx(Gxy_tilde, Gxx_tilde):
@@ -181,19 +206,26 @@ class FreqIdenSIMO:
         return np.absolute(gxy) * np.absolute(gxy) / (np.absolute(gxx) * np.absolute(gyy))
 
 
-if __name__ == "__main__":
+def basic_test():
     arr = np.load("../data/sweep_data_2017_10_18_14_07.npy")
+    # arr = np.load("../../XPlaneResearch/data/sweep_data_2017_11_18_17_19.npy")
     time_seq_source = arr[:, 0]
     ele_seq_source = arr[:, 1]
     q_seq_source = arr[:, 4]
+    airspeed_seq = arr[:, 3]
+    theta_seq = arr[:, 2] / 180 * math.pi
+
     simo_iden = FreqIdenSIMO(time_seq_source, 0.1, 100, ele_seq_source, q_seq_source, win_num=64)
     freq, H, gamma2, gxx, gxy, gyy = simo_iden.get_freq_iden(0)
     h_amp, h_phase = FreqIdenSIMO.get_amp_pha_from_h(H)
 
+    print(freq.__len__())
     plt.subplot(411)
+    plt.semilogx(freq, 20 * np.log10(gxx), label="gxx")
+    plt.semilogx(freq, 20 * np.log10(gyy), label="gyy")
+    plt.semilogx(freq, 20 * np.log10(np.absolute(gxy)), label="gxy")
     plt.grid()
-    plt.semilogx(freq, 20 * np.log10(gxx), freq, 20 * np.log10(gyy), freq, 20 * np.log10(np.absolute(gxy)))
-    # plt.semilogx(freq, 10 * np.log10(gxx), freq, 10 * np.log10(gyy))
+    plt.legend()
     plt.title("Gxx & Gyy Tilde of ele and theta")
 
     plt.subplot(412)
@@ -211,3 +243,7 @@ if __name__ == "__main__":
     plt.grid()
 
     plt.show()
+
+
+if __name__ == "__main__":
+    basic_test()

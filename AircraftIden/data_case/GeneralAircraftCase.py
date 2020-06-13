@@ -6,9 +6,11 @@ from AircraftIden.FreqIden import remove_seq_average_and_drift
 
 import math
 from pymavlink import quaternion
+from pymavlink.rotmat import Vector3
 
 
 class GeneralAircraftCase(object):
+    # Todo add inteplote
     sample_rate = 0
     total_time = 0
     p = np.ndarray([])
@@ -42,7 +44,11 @@ class GeneralAircraftCase(object):
         plt.show()
 
     def get_data_time_range(self, attr_names, t_min=0, t_max=0):
-        assert 0 < t_min < t_max < self.total_time
+        if t_max is None or t_max > self.total_time:
+            t_max = self.total_time
+        if t_min is None:
+            t_min = 0
+        assert 0 <= t_min < t_max
         ptr_min = int(t_min * self.sample_rate)
         ptr_max = int(t_max * self.sample_rate)
 
@@ -52,6 +58,46 @@ class GeneralAircraftCase(object):
             arr = getattr(self, attr)
             ress.append(arr[ptr_min:ptr_max])
         return tuple(ress)
+
+    def get_data_time_range_list(self, attr_names, t_min=None, t_max=None):
+        if t_max is None or t_max > self.total_time:
+            t_max = self.total_time
+        if t_min is None:
+            t_min = 0
+        assert 0 <= t_min < t_max
+
+        ptr_min = int(t_min * self.sample_rate)
+        ptr_max = int(t_max * self.sample_rate)
+
+        ress = []
+        for attr in attr_names:
+            assert hasattr(self, attr), "Case has no attr {}".format(attr)
+            arr = getattr(self, attr)
+            ress.append(arr[ptr_min:ptr_max])
+        return self.t_seq[ptr_min:ptr_max], ress
+
+    def get_concat_data(self, time_ranges, attrs, return_trimed = True):
+        res = dict()
+        count = 0
+        sumup = 0
+        for attr in attrs:
+            attr_data = []
+            for t_min, t_max in time_ranges:
+                _, piece_data = self.get_data_time_range(
+                    [attr], t_min=t_min,
+                    t_max=t_max)
+                # piece_data = remove_seq_average_and_drift(piece_data.copy())
+                if return_trimed:
+                    piece_data = piece_data.copy() - np.average(piece_data)
+                else:
+                    piece_data = piece_data.copy()
+                # print("Do not remove drift")
+                attr_data.append(piece_data)
+            res[attr] = np.concatenate(attr_data)
+            datalen = res[attrs[0]].__len__()
+            totaltime = datalen / self.sample_rate
+            tseq = np.linspace(0, totaltime, datalen)
+        return totaltime, tseq, res
 
 
 # sensor_accel
@@ -98,34 +144,45 @@ class PX4AircraftCase(GeneralAircraftCase):
             raise "Un recognize log type {}".format(log_type)
 
     def parse_ulog(self, fn):
-        open(fn)
-        self.ulog = ULog(fn)
-
+        try:
+            self.ulog = ULog(fn)
+        except Exception as e:
+            print("Error while parse ulog")
+            print(e)
+            exit(-1)
         for data_obj in self.ulog.data_list:  # type:ULog.Data
             if data_obj.name == "sensor_gyro":
                 # We use gyro to setup time seq
                 self.parse_gyro_data(data_obj)
                 break
-
-        for data_obj in self.ulog.data_list:  # type:ULog.Data
+        for data_obj in self.ulog.data_list:
             if data_obj.name == "vehicle_attitude":
                 self.parse_attitude_data(data_obj)
-            elif data_obj.name == "actuator_controls_0":
+
+        for data_obj in self.ulog.data_list:  # type:ULog.Data
+            if data_obj.name == "actuator_controls_0":
                 self.parse_actuator_controls(data_obj)
             elif data_obj.name == "vehicle_local_position":
                 self.parse_local_position_data(data_obj)
+            elif data_obj.name == "vehicle_iden_status":
+                self.parse_vehicle_iden_status(data_obj)
+            elif data_obj.name == "sensor_accel":
+                self.parse_sensor_accel(data_obj)
+
 
     def resample_data(self, t, *x_seqs):
         resampled_datas = []
         for x_seq in x_seqs:
+            func = lambda x: 0 if np.isnan(x) or np.isinf(x) else x
+            x_seq = (np.vectorize(func))(x_seq)
             assert len(x_seq) == len(x_seqs[0]), "Length of data seq must be euqal to time seq"
-
-            inte_func = interp1d(t, x_seq, bounds_error=False)
+            inte_func = interp1d(t, x_seq, bounds_error=False, kind='linear', fill_value=0)
             data = inte_func(self.t_seq)
             # TODO:deal with t< t_min and t > t_max
-            # zi = signal.lfilter_zi(b, a)
-            # z, _ = signal.lfilter(b, a, data, zi=zi * data[0])
+
+            data = (np.vectorize(func))(data)
             resampled_datas.append(data)
+
         if resampled_datas.__len__() > 1:
             return tuple(resampled_datas)
         else:
@@ -148,13 +205,31 @@ class PX4AircraftCase(GeneralAircraftCase):
     def parse_pwm_data(self, data: ULog.Data):
         pass
 
+    def parse_sensor_accel(self, data: ULog.Data):
+        # (['timestamp', 'integral_dt', 'error_count', 'x', 'y', 'z', 'x_integral', 'y_integral', 'z_integral',
+        #            'temperature', 'range_m_s2', 'scaling', 'device_id', 'x_raw', 'y_raw', 'z_raw', 'temperature_raw'])
+        t = data.data['timestamp'] / 1000000 - self.t_min
+        ax = data.data['x']
+        ay = data.data['y']
+        az = data.data['z']
+        self.ax, self.ay, self.az = self.resample_data(t, ax, ay, az)
+
     def parse_actuator_controls(self, data: ULog.Data):
         t = data.data['timestamp'] / 1000000 - self.t_min
         ail = data.data['control[0]']
         ele = data.data['control[1]']
         rud = data.data['control[2]']
         thr = data.data['control[3]']
+
         self.ail, self.ele, self.thr, self.rud = self.resample_data(t, ail, ele, thr, rud)
+
+    def parse_vehicle_iden_status(self, data: ULog.Data):
+        # ['timestamp', 'iden_start_time', 'iden_wait_time', 'inject_param1', 'inject_param2', 'inject_param3',
+        # 'inject_param4', 'inject_value', 'inject_channel', 'inject_signal_mode']
+        # print(data.data.keys())
+        t = data.data['timestamp'] / 1000000 - self.t_min
+        iden_start_time = data.data["iden_start_time"]
+        self.iden_start_time = self.resample_data(t,iden_start_time)
 
     def parse_attitude_data(self, data):
         # dict_keys(['timestamp', 'rollspeed', 'pitchspeed', 'yawspeed', 'q[0]', 'q[1]', 'q[2]', 'q[3]'])
@@ -166,6 +241,8 @@ class PX4AircraftCase(GeneralAircraftCase):
         q1_arr = data.data['q[1]']
         q2_arr = data.data['q[2]']
         q3_arr = data.data['q[3]']
+
+        self.q0, self.q1, self.q2, self.q3 = self.resample_data(t, q0_arr, q1_arr, q2_arr, q3_arr)
 
         roll_arr = []
         pitch_arr = []
@@ -192,23 +269,44 @@ class PX4AircraftCase(GeneralAircraftCase):
         #  'xy_valid', 'z_valid', 'v_xy_valid', 'v_z_valid', 'xy_reset_counter', 'z_reset_counter', 'vxy_reset_counter',
         #  'vz_reset_counter', 'xy_global', 'z_global', 'dist_bottom_valid']
         t = data.data['timestamp'] / 1000000 - self.t_min
-        roc = data.data['vz']
+        vx = data.data['vx']
+        vy = data.data['vy']
+        vz = data.data['vz']
         alt = data.data['z']
-        self.climb_rate, self.alt = self.resample_data(t, roc, - alt)
+        self.climb_rate, self.alt = self.resample_data(t, vz, - alt)
+        # Setup inteplote for q and analyze vx
+
+        body_vx = []
+        body_vy = []
+        body_vz = []
+
+        self.vx, self.vy, self.vz = self.resample_data(t, vx, vy, vz)
+
+        print("Try to transform vx vy vz into body frame")
+        for i in range(len(self.t_seq)):
+            q0, q1, q2, q3 = self.q0[i], self.q1[i], self.q2[i], self.q3[i]
+            quat = quaternion.Quaternion([q0, q1, q2, q3])
+            try:
+                quat.normalize()
+            except Exception as e:
+                print(e)
+                body_vx.append(0)
+                body_vy.append(0)
+                body_vz.append(0)
+                continue
+            local_vel = Vector3([self.vx[i], self.vy[i], self.vz[i]])
+            if math.isnan(q0) or math.isnan(quat.q.data[0]) or math.isnan(self.vx[i]):
+                body_vx.append(0)
+                body_vy.append(0)
+                body_vz.append(0)
+            else:
+                body_vel = quat.inversed.transform(local_vel)
+                body_vx.append(body_vel.x)
+                body_vy.append(body_vel.y)
+                body_vz.append(body_vel.z)
+
+        self.body_vx = body_vx
+        self.body_vy = body_vy
+        self.body_vz = body_vz
 
 
-def get_concat_data(test_case: GeneralAircraftCase, time_ranges, attrs):
-    res = dict()
-    for attr in attrs:
-        attr_data = []
-        for t_min, t_max in time_ranges:
-            _, piece_data = test_case.get_data_time_range(
-                [attr], t_min=t_min,
-                t_max=t_max)
-            piece_data = remove_seq_average_and_drift(piece_data.copy())
-            attr_data.append(piece_data)
-        res[attr] = np.concatenate(attr_data)
-        datalen = res[attrs[0]].__len__()
-        totaltime = datalen / test_case.sample_rate
-        tseq = np.linspace(0, totaltime, datalen)
-    return totaltime, tseq, res

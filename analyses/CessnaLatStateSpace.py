@@ -1,18 +1,88 @@
+import matplotlib
+
+matplotlib.use("Qt5Agg")
+
 from AircraftIden.data_case.GeneralAircraftCase import GeneralAircraftCase, PX4AircraftCase, get_concat_data
 from AircraftIden import FreqIdenSIMO, TransferFunctionFit
 import numpy as np
+
 import matplotlib.pyplot as plt
 import math
 from AircraftIden.StateSpaceIden import StateSpaceIdenSIMO, StateSpaceParamModel
 import sympy as sp
+import pickle
+from AircraftIden.FreqIden import time_seq_preprocess
 
 
-def lat_dyn_SIMO(iter, show_freq_iden_plots=False):
-    # save_data_list = ["running_time", "yoke_pitch",
-    #                  "theta", "airspeed", "q", "aoa", "VVI", "alt", "vx_body", "vy_body", "vz_body"]
+def lat_dyn_SIMO(freqres, show_ssm_iden_plot=False):
+    # X = [u,w,q,th]
+    # Y = [w,q,th,ax,az]
+    # Note ax ay contain gravity acc
 
-    # arr = np.load("../data/sweep_data_2017_11_16_11_47.npy")
-    arr = np.load("../../XPlaneResearch/data/sweep_data_2017_11_18_17_19.npy")
+    Xwdot, Zwdot, Mwdot = sp.symbols('Xwdot Zwdot Mwdot')
+
+    M = sp.Matrix([[1, -Xwdot, 0, 0],
+                   [0, 1 - Zwdot, 0, 0],
+                   [0, -Mwdot, 1, 0],
+                   [0, 0, 0, 1]])
+
+    g = 9.78
+    th0 = -0.004783792053474051
+    U0 = 64.24
+    W0 = -1.1477373864894442
+
+    print("Trim theta {} U0 {} W0 {}".format(th0, U0, W0))
+    Xu, Xw, Xq = sp.symbols('Xu Xw Xq')
+    Zu, Zw, Zq = sp.symbols('Zu Zw Zq')
+    Mu, Mw, Mq = sp.symbols('Mu Mw Mq')
+
+    F = sp.Matrix([[Xu, Xw, Xq - W0, -g * sp.cos(th0)],
+                   [Zu, Zw, Zq + U0, -g * sp.sin(th0)],
+                   [Mu, Mw, Mq, 0],
+                   [0, 0, 1, 0]])
+
+    Xele, Zele, Mele = sp.symbols('Xele,Zele,Mele')
+    G = sp.Matrix([[Xele],
+                   [Zele],
+                   [Mele],
+                   [0]])
+
+    # direct using u w q ax az for y
+    H0 = sp.Matrix([
+        [0, 1, 0, 0],
+        [0, 0, 1, 0],
+        [0, 0, W0, - g * math.cos(th0)],  # Our ax is along forward
+        [0, 0, -U0, - g * math.sin(th0)]]  # az is down to earth
+    )
+
+    H1 = sp.Matrix([
+        [0, 0, 0, 0],
+        [0, 0, 0, 0],
+        [1, 0, 0, 0],
+        [0, 1, 0, 0],
+    ])
+
+    syms = [Xwdot, Zwdot, Mwdot,
+            Xu, Xw, Xq,
+            Zu, Zw, Zq,
+            Mu, Mw, Mq,
+            Xele, Zele, Mele]
+    lat_dyn_state_space = StateSpaceParamModel(M, F, G, H0, H1, syms)
+
+    ssm_iden = StateSpaceIdenSIMO(freqres, accept_J=20,
+                                  enable_debug_plot=show_ssm_iden_plot,
+                                  y_names=["w", "q", r"a_x", r"a_z"], )
+    J, ssm = ssm_iden.estimate(lat_dyn_state_space, syms, constant_defines={})
+    ssm.check_stable()
+    ssm_iden.draw_freq_res()
+    # print(ssm.
+    with open("../data/SIMStateSpaceExample.pkl", 'wb') as output:
+        pickle.dump(ssm, output, pickle.HIGHEST_PROTOCOL)
+
+
+def post_analyse_ssm(pkl_name, show_freq_iden_plots=False):
+    # verf data full throttle 3100meter high 62.4m/s
+    arr = np.load("../../XPlaneResearch/data/sweep_data_2017_12_10_20_08.npy")
     time_seq = arr[:, 0]
     ele_seq = arr[:, 1]
     q_seq = arr[:, 4]
@@ -33,6 +103,12 @@ def lat_dyn_SIMO(iter, show_freq_iden_plots=False):
     # X = [u,w,q,th]
     # Y = [w,q,th,ax,az]
     # Note ax ay contain gravity acc
+    g = 9.78
+    th0 = theta_seq[0]
+    U0 = vx_seq[0]
+    W0 = vz_seq[0]
+    ax0 = ax_seq[0]
+    az0 = az_seq[0]
 
     if show_freq_iden_plots:
         fig = plt.figure("source data")
@@ -59,87 +135,87 @@ def lat_dyn_SIMO(iter, show_freq_iden_plots=False):
         # plt.plot(time_seq, ele_seq, label="ele")
 
         plt.legend()
+        plt.show()
+    time_seq1, ele_seq1 = time_seq_preprocess(time_seq, ele_seq,
+                                              remove_drift_and_avg=True,
+                                              enable_resample=True)
 
-    simo_iden = FreqIdenSIMO(time_seq, 1, 20, ele_seq, vx_seq, vz_seq,
-                             q_seq, theta_seq, ax_seq, az_seq, win_num=32)
+    with open(pkl_name, 'rb') as input:
+        ssm = pickle.load(input)
 
-    if show_freq_iden_plots:
-        plt.figure("Ele->Vx")
-        simo_iden.plt_bode_plot(0)
-        plt.figure("Ele->W(vz)")
-        simo_iden.plt_bode_plot(1)
-        plt.figure("Ele->Q")
-        simo_iden.plt_bode_plot(2)
-        plt.figure("Ele->Theta")
-        simo_iden.plt_bode_plot(3)
-        plt.figure("Ele->Ax")
-        simo_iden.plt_bode_plot(4)
-        plt.figure("Ele->Az")
-        simo_iden.plt_bode_plot(5)
+        # ele_seq = np.zeros(ele_seq.shape)
+        t_seq, y_seq, x_out = ssm.response_by_u_seq(t_seq=time_seq1, u_seq=ele_seq1, X0=np.array(
+            [vx_seq[0] - U0, vz_seq[0] - W0, q_seq[0], theta_seq[0] - th0]))
 
-        # plt.show()
+        plt.figure("ele")
+        plt.plot(t_seq, ele_seq1, label="data")
 
-    freq, Hs, coherens = simo_iden.get_all_idens()
+        plt.figure("Elevator->Y")
 
-    Xwdot, Zwdot, Mwdot = sp.symbols('Xwdot Zwdot Mwdot')
+        plt.subplot(321)
+        plt.plot(t_seq, ele_seq1, label="data")
+        plt.title("ele")
 
-    M = sp.Matrix([[1, -Xwdot, 0, 0],
-                   [0, 1 - Zwdot, 0, 0],
-                   [0, -Mwdot, 1, 0],
-                   [0, 0, 0, 1]])
+        # plt.subplot(322)
+        # plt.plot(t_seq, y_seq[:, 0] + U0, label="est")
+        # plt.plot(time_seq, vx_seq, label="data")
+        # plt.legend()
+        # plt.title("u")
 
-    g = 9.78
-    th0 = theta_seq[0]
-    U0 = vx_seq[0]
-    W0 = vz_seq[0]
-    print("Trim theta {} U0 {} W0 {}".format(th0, U0, W0))
-    Xu, Xw, Xq = sp.symbols('Xu Xw Xq')
-    Zu, Zw, Zq = sp.symbols('Zu Zw Zq')
-    Mu, Mw, Mq = sp.symbols('Mu Mw Mq')
+        plt.subplot(323)
+        plt.plot(t_seq, y_seq[:, 0] + W0, label="est")
+        plt.plot(time_seq, vz_seq, label="data")
+        plt.legend()
+        plt.title("w")
 
-    F = sp.Matrix([[Xu, Xw, Xq - W0, -g * sp.cos(th0)],
-                   [Zu, Zw, Zq + U0, -g * sp.sin(th0)],
-                   [Mu, Mw, Mq, 0],
-                   [0, 0, 1, 0]])
+        plt.subplot(324)
+        plt.plot(t_seq, y_seq[:, 1], label="est")
+        plt.plot(time_seq, q_seq, label="data")
+        plt.legend()
+        plt.title("q")
 
-    Xele, Zele, Mele = sp.symbols('Xele,Zele,Mele')
-    G = sp.Matrix([[Xele],
-                   [Zele],
-                   [Mele],
-                   [0]])
+        plt.subplot(325)
+        plt.plot(t_seq, y_seq[:, 2] + ax0, label="est")
+        plt.plot(time_seq, ax_seq, label="data")
+        plt.legend()
+        plt.title(r"a_x")
+        plt.subplot(326)
+        plt.plot(t_seq, y_seq[:, 3] + az0, label="est")
+        plt.plot(time_seq, az_seq, label="data")
+        plt.legend()
+        plt.title(r"a_z")
 
-    # direct using u w q th for y
-    H0 = sp.Matrix([[1, 0, 0, 0],
-                    [0, 1, 0, 0],
-                    [0, 0, 1, 0],
-                    [0, 0, 0, 1],
-                    [0, 0, W0, - g * math.cos(th0)],#Issue!!!!!!!
-                    [0, 0, -U0, g * math.sin(th0)]]
-                   )
+        plt.figure("Elevator->x")
+        plt.subplot(221)
+        plt.plot(t_seq, vx_seq, label="Data")
+        plt.plot(t_seq, x_out[:, 0] + U0, label="Est")
+        plt.legend()
+        plt.title("u")
 
-    H1 = sp.Matrix([
-        [0, 0, 0, 0],
-        [0, 0, 0, 0],
-        [0, 0, 0, 0],
-        [0, 0, 0, 0],
-        [1, 0, 0, 0],
-        [0, 1, 0, 0],
-    ])
+        plt.subplot(222)
+        plt.plot(t_seq, vz_seq, label="Data")
+        plt.plot(t_seq, x_out[:, 1] + W0, label="Est")
+        plt.legend()
+        plt.title("w")
 
-    syms = [Xwdot, Zwdot, Mwdot,
-            Xu, Xw, Xq,
-            Zu, Zw, Zq,
-            Mu, Mw, Mq,
-            Xele, Zele, Mele]
-    lat_dyn_state_space = StateSpaceParamModel(M, F, G, H0, H1, syms)
+        plt.subplot(223)
+        plt.plot(t_seq, q_seq, label="Data")
+        plt.plot(t_seq, x_out[:, 2], label="Est")
+        plt.legend()
+        plt.title("q")
 
-    ssm_iden = StateSpaceIdenSIMO(freq, Hs, coherens, max_sample_times=iter, accept_J=20,
-                                  enable_debug_plot=True, y_names=[r"v_x", "w", "q", r"$\theta$", r"a_x", r"a_z"])
-    ssm_iden.estimate(lat_dyn_state_space, syms, constant_defines={})
-    # ssm_iden.draw_freq_res()
+        plt.subplot(224)
+        plt.plot(t_seq, theta_seq, label="Data")
+        plt.plot(t_seq, x_out[:, 3] + th0, label="Est")
+        plt.legend()
+        plt.title("th")
+
+        plt.show()
 
 
 if __name__ == "__main__":
-    # plt.rc('text', usetex=True)
-    sp.init_printing()
-    lat_dyn_SIMO(23, show_freq_iden_plots=True)
+    pkl_name = "../data/sweep_data_2017_12_10_19_05_freqres.pkl"
+    with open(pkl_name, 'rb') as inp:
+        freqres = pickle.load(inp)
+        #lat_dyn_SIMO(freqres)
+        post_analyse_ssm("../data/SIMStateSpaceExample.pkl")

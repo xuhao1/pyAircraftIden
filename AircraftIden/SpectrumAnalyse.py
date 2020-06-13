@@ -51,7 +51,7 @@ class MultiSignalSpectrum:
     def calc_fft_for_seqs(self):
         win_num = self.win_num
         self.cut_datas_to_windows()
-        print("Win Time Len {0} s".format(self.per_win_time))
+        # print("Win Time Len {0} s".format(self.per_win_time))
         for j in range(self.data_num):
             x_wins = self.data_windows[j]
             x_fft_wins = []
@@ -68,8 +68,8 @@ class MultiSignalSpectrum:
         datas = self.x_seqs
         per_win_length = 2 * (len(datas[0]) // (winnum))
         delta_win = per_win_length // 2
-        print("len {0} perwinlen {1} delta {2} use data{3}".format(len(datas[0]), per_win_length, delta_win,
-                                                                   delta_win * (winnum + 1)))
+        # print("len {0} perwinlen {1} delta {2} use data{3}".format(len(datas[0]), per_win_length, delta_win,
+        #                                                            delta_win * (winnum + 1)))
         res = []
         for data in datas:
             assert len(data) == len(datas[0]), "the length of input data seqs must be equal"

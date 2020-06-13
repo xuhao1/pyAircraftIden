@@ -1,4 +1,4 @@
 from AircraftIden.FreqIden import FreqIdenSIMO
-from AircraftIden.TransferFunctionFit import TransferFunctionFit
+from AircraftIden.TransferFunctionFit import TransferFunctionFit,TransferFunctionModel,TransferFunctionParamModel
 from AircraftIden.StateSpaceIden import StateSpaceIdenSIMO
 from AircraftIden.StateSpaceParamModel import StateSpaceParamModel
