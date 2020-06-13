@@ -58,6 +58,22 @@ Check  [Tail-sitter example](./examples/TSCruisingFreqResQFitting.ipynb) for det
 Here shows the Ulog data read from ulog
 ![px4 data](plots/px4_data.png)
 
+## Examples
+In data and examples, contain data and analyse, first for a Cessna 172sp. Data is collect in X-Plane Simulator. Second is a Tail-sitter VTOL, data is collect in real world experiment.
+
+Cessna example:
+[SIMO example](./examples/FreqIdenExample.ipynb)
+
+Tail-sitter example:
+[Tail-sitter example](./examples/TSCruisingFreqResQFitting.ipynb)
+
+[State Space example](./examples/TSCruisingSSM.ipynb)
+
+## Reference
+Please Check 
+**Remple, Robert K., and Mark B. Tischler.Aircraft and rotorcraft system identification: engineering methods with flight-test examples. American Institute of Aeronautics and Astronautics, 2006.** for algorithm details.
 
 ## License
 This project uses MIT license
+
+Enjoy!
