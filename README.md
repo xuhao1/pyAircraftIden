@@ -4,7 +4,7 @@ This project stand for system identification for aircraft or other system.
 ![frequency response example](plots/workflow.PNG)
 
 
-## Single-input Multi Output Frequency
+## Single-input Multi-Output Frequency Identification
 For frequency identification
 
 ```python
