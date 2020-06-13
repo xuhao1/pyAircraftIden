@@ -1,51 +1,191 @@
 import math
 import numpy as np
-import matplotlib.pyplot as plt
 from AircraftIden import FreqIdenSIMO
+import matplotlib.pyplot as plt
 from scipy.optimize import minimize, basinhopping
 import scipy.signal as signal
 import time
+import sympy as sp
+from sympy import poly, latex
+import multiprocessing
+import random
+from numpy import linalg as LA
+import numbers
+
+def poly_latex(poly,cha = "s"):
+    ret_str = ""
+    ords = len(poly) - 1
+    for i in range(ords+1):
+        ordn = ords - i
+        if ordn == 0:
+            ret_str = ret_str + "{:4.2f}".format(poly[i])
+        else:
+            if (poly[i] == 1):
+                ret_str = ret_str + "s^{:d}+".format(ordn) 
+            else:
+                ret_str = ret_str + "{:4.2f} s^{:d}+".format(poly[i],ordn)
+    return ret_str
+
+class TransferFunctionModel(object):
+    #TransferFunction Model, num and den is coefficent
+    def __init__(self,num,den,tau = 0):
+        self.num = num
+        self.den = den
+        self.tau = tau
+
+        pass
+    
+    def freqres(self, w, unwarp = False):
+        
+        b = self.num
+        a = self.den
+        tau = self.tau
+        s = 1j * w
+        # print(s)
+        # print(type(tau))
+        h = np.polyval(b, s) * np.exp(-tau * s) / np.polyval(a, s)
+        # print(np.absolute(h))
+        h = np.complex64(h)
+        amp = 20 * np.log10(np.absolute(h))
+        if unwarp:
+            pha = np.unwrap(np.arctan2(h.imag, h.real)) * 180 / math.pi
+        else:
+            pha = np.arctan2(h.imag, h.real) * 180 / math.pi
+        return amp, pha
+    
+    
+    def plot(self, freq = None):
+        if freq is None:
+            freq = np.linspace(1.0,10,10)
+        # print(freq)
+        amp,pha = self.freqres(freq,True)
+        plt.semilogx(freq,amp,label="Amp")
+        plt.semilogx(freq,pha,label="Pha")
+        plt.legend()
+
+    def latex(self):
+        self.num = np.array(self.num) / self.den[0]
+        self.den = np.array(self.den) / self.den[0]
+
+        num = self.num
+        den = self.den
+        tau = self.tau
+        return r"$\frac{" + poly_latex(num) + "}{" + poly_latex(den) +"}" + "e^{-" + "{:4.3f}".format(tau) + "t}$"
+
+    
+
+class TransferFunctionParamModel(object):
+    #A TransferFunction with unknown parameters
+    
+    def __init__(self,num,den,tau = 0):
+        self.num = num
+        self.den = den
+        self.tau = tau
+        self.s = sp.symbols('s')
 
 
-def freqres(b, a, tau, w):
-    s = 1j * w
-    h = np.polyval(b, s) * np.exp(-tau * s) / np.polyval(a, s)
-    # amp, pha = 20 * np.log10(np.absolute(H)), np.arctan2(H.imag, H.real) * 180 / math.pi
-    amp = 20 * np.log10(np.absolute(h))
-    pha = np.arctan2(h.imag, h.real) * 180 / math.pi
-    return amp, pha
+    def transfer_function_by_dict(self, sym_dict):
+        s = self.s
 
+        if isinstance(self.num, numbers.Number):
+            num  = self.num
+        else:
+            num_formula =  self.num.subs(sym_dict)
+            num = poly(num_formula,s).all_coeffs()
 
-def bodeplot(b, a, tau, ws):
-    s = 1j * ws
-    h = np.polyval(b, s) * np.exp(-tau * s) / np.polyval(a, s)
-    # amp, pha = 20 * np.log10(np.absolute(H)), np.arctan2(H.imag, H.real) * 180 / math.pi
-    amp = 20 * np.log10(np.absolute(h))
-    pha = np.unwrap(np.arctan2(h.imag, h.real)) * 180 / math.pi
-    return ws, amp, pha
+        if isinstance(self.den, numbers.Number):
+            den = self.den
+        else:
+            den_formula =  self.den.subs(sym_dict)
+            den = poly(den_formula,s).all_coeffs()
 
+        AlltoFloat = lambda x: float(x.evalf())
+        num = list(map(AlltoFloat,num))
+        den = list(map(AlltoFloat,den))
+
+        if not isinstance(self.tau, numbers.Number):
+            tau = self.tau.subs(sym_dict)
+            tau = float(tau.evalf())
+        else:
+            tau = self.tau
+
+        return TransferFunctionModel(num,den,tau)
+
+    def get_unknown_param_list(self):
+        syms = set()
+        if not isinstance(self.num, numbers.Number):
+            syms.update(self.num.atoms(sp.Symbol))
+
+        if not isinstance(self.den, numbers.Number):
+            syms.update(self.den.atoms(sp.Symbol))
+
+        if not isinstance(self.tau, numbers.Number):
+            syms.update(self.tau.atoms(sp.Symbol))
+
+        syms.remove(self.s)
+        return list(syms)
+
+    def symbol_expr(self):
+        return self.num / self.den * sp.exp(-self.tau)
+
+    def latex(self,sub = None):
+        if sub is None:
+            return latex(self.num / self.den * sp.exp(-self.tau))
+
+        frac_part = r"$\frac{" + latex(self.num.subs(sub)) + "}{" + latex(self.den.subs(sub)) + "}"
+        tau_part =  "" if self.tau == 0 else ("e^{-" + "{:4.3f}".format(self.tau.subs(sub)) + "t}$")
+        return frac_part + tau_part
 
 class TransferFunctionFit(object):
-    def __init__(self, freq, H, coheren, num_ord, den_ord, nw=20, enable_debug_plot=False):
-        # num/den
-        self.num_ord = num_ord
-        self.den_ord = den_ord
+    def __init__(self, freq, H, coheren, tfpm, nw=20,
+                 iter_times = 100,has_addition_integral = False,reg = 0.1):
         self.nw = nw
         self.source_freq = freq
         self.source_H = H
         self.source_coheren = coheren
         self.wg = 1.0
         self.wp = 0.01745
-        self.iter_times = 100
+        self.iter_times = iter_times
 
-        self.accept_J = 10
+        self.tfpm = tfpm
+        self.unknown_param_list = self.tfpm.get_unknown_param_list()
+        print("Uknown number {} {}".format(len(self.unknown_param_list),self.unknown_param_list))
+
+        self.tau_index = None
+        if tfpm.tau != 0:
+            for i in range(len(self.unknown_param_list)):
+                if self.unknown_param_list[i] == tfpm.tau:
+                    self.tau_index = i
+                    # print("Has unknown tau {}".format(self.tau_index))
+                    break
 
         self.est_omg_ptr_list = []
-        self.enable_debug_plot = enable_debug_plot
+        self.enable_debug_plot = False
 
-    def cost_func_at_omg_ptr(self, num, den, tau, omg_ptr):
+        self.reg = 0.1
+        
+        self.has_addition_integral = has_addition_integral
+
+        self.den_max_ord_ptr = 0
+        self.x = None
+
+
+    def get_transfer_function_by_x(self,x):
+        syms = dict(zip(self.unknown_param_list,x))
+        tf = self.tfpm.transfer_function_by_dict(syms)
+        return tf
+
+    def latex(self, sspm = False):
+        if sspm or self.x is None:
+            return self.tfpm.latex()
+        else:
+            return self.tf.latex()
+
+    def cost_func_at_omg_ptr(self, tf, omg_ptr):
         omg = self.source_freq[omg_ptr]
-        amp, pha = freqres(num, den, tau, omg)
+
+        # print("tfdict:",tf.__dict__)
+        amp, pha = tf.freqres(omg)
 
         h = self.source_H[omg_ptr]
         h_amp = 20 * np.log10(np.absolute(h))
@@ -63,11 +203,12 @@ class TransferFunctionFit(object):
         wgamma = wgamma * wgamma
         return J * wgamma
 
-    def cost_func(self, num, den, tau):
-        cost_func_at_omg = lambda omg_ptr: self.cost_func_at_omg_ptr(num, den, tau, omg_ptr)
+    def cost_func(self, x):
+        tf = self.get_transfer_function_by_x(x)
+        cost_func_at_omg = lambda omg_ptr: self.cost_func_at_omg_ptr(tf, omg_ptr)
         arr_func = np.vectorize(cost_func_at_omg)
         cost_arr = arr_func(self.est_omg_ptr_list)
-        return np.sum(cost_arr) * 20 / self.nw
+        return np.sum(cost_arr) * 20 / self.nw + self.reg * LA.norm(x)
 
     def init_omg_list(self, omg_min, omg_max):
         if omg_min is None:
@@ -91,97 +232,94 @@ class TransferFunctionFit(object):
                 self.est_omg_ptr_list.append(i)
                 omg_ptr = omg_ptr + 1
 
-    def estimate(self, omg_min=None, omg_max=None):
+
+    def estimate(self, omg_min=None, omg_max=None,accept_J=10):
         self.init_omg_list(omg_min, omg_max)
-
-        # print("omg ptr list",self.est_omg_ptr_list)
-        # print("Will fit from {} rad/s to {} rad/s".format(omg_min, omg_max))
-
-        def cost_func_x(x):
-            num = x[0:self.num_ord]
-            den = x[self.num_ord:self.num_ord + self.den_ord]
-            tau = x[-1]
-            return self.cost_func(num, den, tau)
 
         J_min_max = 1000000
         J_min = J_min_max
-        x = [None for i in range(self.num_ord + self.den_ord + 1)]
-        # plt.figure("resolving..")
-        # plt.ion()
-        for i in range(self.iter_times):
-            x_tmp, J = self.solve(cost_func_x)
-            if J < J_min:
-                print("Found new better res J:{}".format(J))
-                x = x_tmp.copy()
-                self.setup_transferfunc(x)
-                if self.enable_debug_plot:
-                    plt.ion()
-                    plt.figure("resolving..")
-                    plt.clf()
-                    self.plot()
-                    if J_min == J_min_max:
-                        plt.pause(0.1)
-                    plt.pause(0.01)
-                J_min = J
-                if J_min < self.accept_J:
-                    break
-        plt.ioff()
-        plt.close("resolving..")
 
-        print("J {} num {} den {} tau {}".format(J, self.num, self.den, self.tau))
-        return self.num, self.den, self.tau
+        cpu_use = multiprocessing.cpu_count()
+        pool = multiprocessing.Pool(cpu_use)
+
+        results = []
+        for i in range(self.iter_times):
+            result = pool.apply_async(self.solve)
+            results.append(result)
+
+        should_exit_pool = False
+        print("Starting Estimate",end="")
+        while not should_exit_pool:
+            if results.__len__() == 0:
+                print("All in pool finish")
+                break
+            for i in range(results.__len__()):
+                thr = results[i]
+                if thr.ready() and thr.successful():
+                    x_tmp,J  = thr.get()
+                    if J < J_min:
+                        J_min = J
+                        self.x = x_tmp
+                        self.setup_transferfunc(x_tmp)
+                        print("\r",end="")
+                        print("Found new better {}".format(J), end="")
+
+                    if J < accept_J:
+                        print("")
+                        pool.terminate()
+                        return self.tf
+
+                    del results[i]
+                    break
+            time.sleep(0.01)
+        pool.terminate()
+        return self.tf
 
     def setup_transferfunc(self, x):
-        num = x[0:self.num_ord]
-        den = x[self.num_ord:self.num_ord + self.den_ord]
-        tau = x[-1]
-        self.num = num
-        self.den = den
-        self.tau = tau
+        self.tf = self.get_transfer_function_by_x(x)
 
-    def solve(self, f):
+    def solve(self):
+        f = self.cost_func
         x0 = self.setup_initvals()
         bounds = [(None, None) for i in range(len(x0))]
         bounds[-1] = (0, 0.1)
         ret = minimize(f, x0, options={'maxiter': 10000000, 'disp': False}, bounds=bounds, tol=1e-15)
-        x = ret.x.copy() / ret.x[0]
-        x[-1] = ret.x[-1]
+        x = ret.x.copy()# / ret.x[self.den_max_ord_ptr]
         J = ret.fun
         return x, J
 
     def setup_initvals(self):
-        x0 = np.random.rand(self.den_ord + self.num_ord + 1)
-        x0[-1] = 0.00
+        x0 = np.random.rand(len(self.unknown_param_list)) - 0.5
+        x0 = x0 * 2
+        if self.tau_index != None:
+            x0[self.tau_index] = 0
         return x0
 
-    def plot(self):
+    def plot(self, name = ""):
         H = self.source_H
         freq = self.source_freq
-        num = self.num
-        den = self.den
-        tau = self.tau
 
-        w, mag, phase = bodeplot(num, den, tau, self.source_freq)
+        mag, phase = self.tf.freqres(freq,unwarp=True)
         h_amp, h_phase = FreqIdenSIMO.get_amp_pha_from_h(H)
 
         plt.subplot(311)
         plt.semilogx(freq, h_amp, label='source')
-        plt.semilogx(w, mag, label='fit')
-        plt.title("H Amp")
+        plt.semilogx(freq, mag, label='fit')
+        plt.title(name + "H Amp")
         plt.grid(which='both')
         plt.legend()
 
         plt.subplot(312)
         plt.semilogx(freq, h_phase, label='source')
-        plt.semilogx(w, phase, label='fit')
-        plt.title("H Phase")
+        plt.semilogx(freq, phase, label='fit')
+        plt.title(name + "H Phase")
         plt.grid(which='both')
         plt.legend()
 
         plt.subplot(313)
         plt.semilogx(freq, self.source_coheren, label="coherence of xy")
         plt.legend()
-        plt.title("gamma2")
+        plt.title(name + "gamma2")
         plt.grid(which='both')
 
         pass
@@ -189,22 +327,23 @@ class TransferFunctionFit(object):
 
 def siso_freq_iden():
     # save_data_list = ["running_time", "yoke_pitch", "theta", "airspeed", "q", "aoa", "VVI", "alt"]
-    arr = np.load("../data/sweep_data_2017_10_18_14_07.npy")
+    arr = np.load("../../XPlaneResearch/data/sweep_data_2017_12_10_19_05.npy")
     time_seq_source = arr[:, 0]
     ele_seq_source = arr[:, 1]
-    q_seq_source = arr[:, 4]
+    q_seq_source = arr[:, 4]*math.pi / 180
     vvi_seq_source = arr[:, 6]
 
-    simo_iden = FreqIdenSIMO(time_seq_source, 0.2, 100, ele_seq_source, q_seq_source, vvi_seq_source, win_num=32)
+    simo_iden = FreqIdenSIMO(time_seq_source, 1, 30, ele_seq_source, q_seq_source, vvi_seq_source)
 
-    # plt.figure(0)
-    # simo_iden.plt_bode_plot(0)
+    #plt.figure(0)
+    #simo_iden.plt_bode_plot(0)
     #
     freq, H, gamma2, gxx, gxy, gyy = simo_iden.get_freq_iden(0)
 
     fitter = TransferFunctionFit(freq, H, gamma2, 2, 4, nw=20, enable_debug_plot=True)
     fitter.estimate()
 
+    fitter.plot()
     plt.show()
 
 

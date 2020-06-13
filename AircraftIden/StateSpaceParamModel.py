@@ -2,6 +2,7 @@ import sympy as sp
 import numpy as np
 import matplotlib.pyplot as plt
 import math
+import control
 
 
 class StateSpaceParamModel(object):
@@ -23,7 +24,9 @@ class StateSpaceParamModel(object):
         self.s = sp.symbols('s')
 
         self.pro_calc()
-
+        self.init_new_params()
+        
+    def init_new_params(self):
         self.new_params_raw_defines = dict()
         self.new_params_raw_pos = dict()
         self.new_params_list = list()
@@ -84,6 +87,7 @@ class StateSpaceParamModel(object):
         pass
 
     def load_constant_defines(self, constant_syms):
+        self.init_new_params()
         A = self.A.evalf(subs=constant_syms)
         B = self.B.evalf(subs=constant_syms)
         H0 = self.H0.evalf(subs=constant_syms)
@@ -99,7 +103,7 @@ class StateSpaceParamModel(object):
         self.H0_numeric = self.determine_unknown_from_mat(self.H0_converted, 'H0')
         self.H1_numeric = self.determine_unknown_from_mat(self.H1_converted, 'H1')
 
-        self.show_formula()
+        # self.show_formula()
         # print("new A {} B {}".format(self.A_converted, self.B_converted))
         # print("new H0 {} H1 {}".format(self.H0_converted, self.H1_converted))
 
@@ -111,6 +115,10 @@ class StateSpaceParamModel(object):
         # print("Solving equs {}".format(equs))
         # print("Unknown {}".format(self.syms))
         solvs = sp.solve(equs, tuple(self.syms))
+        # print(solvs)
+        if isinstance(solvs,dict):
+            assert solvs.__len__() == self.syms.__len__(), "solvs {} cannot recover syms {}".format(solvs, self.syms)
+            return solvs
         assert solvs[0].__len__() == self.syms.__len__(), "solvs {} cannot recover syms {}".format(solvs, self.syms)
         return dict(zip(self.syms, solvs[0]))
 
@@ -148,8 +156,12 @@ class StateSpaceParamModel(object):
         Tpart2 = (s * np.eye(self.dims) - A_num) ** -1 * B_num
         self.T = (H0_num + s * H1_num) * Tpart2
 
-    def calucate_transfer_matrix_at_s(self, sym_subs, s, using_converted=False):
-        # sym_subs = dict()
+    def get_transfer_func(self, y_index, u_index):
+        # Must be run after cal
+        assert self.T is not None, "Must run calucate_transfer_matrix first"
+        return self.T[y_index, u_index]
+
+    def get_ssm_by_syms(self, sym_subs, using_converted=False):
         A_num = self.A_numeric.copy()
         B_num = self.B_numeric.copy()
         H0_num = self.H0_numeric.copy()
@@ -174,16 +186,60 @@ class StateSpaceParamModel(object):
                     mat_process = H1_num
                 assert mat_process is not None, "Mat name {} illegal".format(mn)
                 mat_process[i][j] = v
+        return StateSpaceModel(A_num, B_num, H0_num, H1_num)
 
-        TT = np.linalg.inv((s * np.eye(self.dims) - A_num))
-        Tpart2 = np.dot(TT, B_num)
-        Tnum = np.dot((H0_num + s * H1_num), Tpart2)
+
+class StateSpaceModel():
+    def __init__(self, A_num, B_num, H0_num, H1_num=None):
+        if H1_num is None:
+            H1_num = np.zeros(H0_num.shape)
+        self.A = A_num
+        self.B = B_num
+        self.H0 = H0_num
+        self.H1 = H1_num
+        self.check_dims()
+        self.D = np.zeros((self.y_dims, self.u_dims))
+        self.ssm = control.StateSpace(self.A, self.B, self.H0, self.D)
+
+    def calucate_transfer_matrix_at_omg(self, omg):
+        s = omg * 1J
+        TT = np.linalg.inv((s * np.eye(self.dims) - self.A))
+        Tpart2 = np.dot(TT, self.B)
+        Tnum = np.dot((self.H0 + s * self.H1), Tpart2)
         return Tnum
 
-    def get_transfer_func(self, y_index, u_index):
-        # Must be run after cal
-        assert self.T is not None, "Must run calucate_transfer_matrix first"
-        return self.T[y_index, u_index]
+    def check_dims(self):
+        # 0 - - -n
+        # |
+        # |
+        # m
+        self.dims, n = self.A.shape
+        assert self.dims == n, "Shape of M must equal"
+        m, n = self.A.shape
+        assert m == n == self.dims, 'Error on F shape needs {0}x{0} got {1}x{2}'.format(self.dims, m, n)
+
+        m, n = self.B.shape
+        self.u_dims = n
+        assert m == self.dims, 'Error on G shape needs {0}x{2} got {1}x{2}'.format(self.dims, m, n)
+
+        m, n = self.H0.shape
+        self.y_dims = m
+        assert n == self.dims, 'Error on H0 shape needs {1}x{0} got {1}x{2}'.format(self.dims, m, n)
+
+        m, n = self.H1.shape
+        assert n == self.dims and m == self.y_dims, 'Error on H0 shape needs {1}x{0} got {2}x{3}'.format(self.dims,
+                                                                                                         self.y_dims, m,
+                                                                                                         n)
+
+    def check_stable(self):
+        eigs = np.linalg.eigvals(self.A)
+        print("Eigs {}".format(eigs))
+        for eigv in eigs:
+            if np.real(eigv) > 1e-3:
+                print("Not stable")
+                return False
+        print("Stable")
+        return True
 
     @staticmethod
     def get_amp_pha_from_matrix(Tnum, u_index, y_index):
@@ -191,3 +247,22 @@ class StateSpaceParamModel(object):
         amp = 20 * np.log10(np.absolute(h))
         pha = np.arctan2(h.imag, h.real) * 180 / math.pi
         return amp, pha
+
+    def response_by_u_seq(self, t_seq, u_seq, X0=None):
+        if X0 is None:
+            X0 = np.zeros(self.dims)
+        sample_rate = len(t_seq) / (t_seq[-1] - t_seq[0])
+        T, y_out, x_out = control.forced_response(self.ssm, t_seq, u_seq, X0)
+        x_out = np.transpose(x_out)
+        y_out = np.transpose(y_out)
+
+        x_diff = np.diff(x_out, axis=0)
+        x_diff_tail = np.zeros((1, self.dims))
+        x_dot = np.concatenate((x_diff, x_diff_tail), axis=0) * sample_rate
+        yout_add = np.apply_along_axis(lambda xdot: np.dot(self.H1, xdot), 1, x_dot)
+
+        y_out = y_out + yout_add
+        return t_seq, y_out,x_out
+
+    def __str__(self):
+        return "A {}\nB {}\nH0 {}\nH1 {}\n".format(self.A, self.B, self.H0, self.H1)
