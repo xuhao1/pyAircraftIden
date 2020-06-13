@@ -22,6 +22,10 @@ class GeneralAircraftCase(object):
     pitch = np.ndarray([])
     yaw = np.ndarray([])
 
+    roll_sp = np.ndarray([])
+    pitch_sp = np.ndarray([])
+    yaw_sp = np.ndarray([])
+
     pitchrate_flted = np.ndarray([])
 
     alt = np.ndarray([])
@@ -33,6 +37,8 @@ class GeneralAircraftCase(object):
     thr = np.ndarray([])
 
     controls = np.ndarray([])
+    
+    
 
     def __init__(self):
         pass
@@ -145,28 +151,44 @@ class PX4AircraftCase(GeneralAircraftCase):
 
     def parse_ulog(self, fn):
         try:
+            print(f"Opening log file {fn}")
             self.ulog = ULog(fn)
         except Exception as e:
             print("Error while parse ulog")
             print(e)
             exit(-1)
+        
         for data_obj in self.ulog.data_list:  # type:ULog.Data
             if data_obj.name == "sensor_gyro":
                 # We use gyro to setup time seq
+                print("Parse sensor gyro")
                 self.parse_gyro_data(data_obj)
                 break
-        for data_obj in self.ulog.data_list:
+                
+        for data_obj in self.ulog.data_list:  # type:ULog.Data                
             if data_obj.name == "vehicle_attitude":
+                print("Parse vehicle attitude")
                 self.parse_attitude_data(data_obj)
-
+                
+            elif data_obj.name == "vehicle_attitude_setpoint":
+                print("Parse vehicle attitude sp")
+                self.parse_attitude_data_sp(data_obj)
+            
         for data_obj in self.ulog.data_list:  # type:ULog.Data
             if data_obj.name == "actuator_controls_0":
+                print("actuator_controls_0")
                 self.parse_actuator_controls(data_obj)
+                
             elif data_obj.name == "vehicle_local_position":
+                print("vehicle_local_position")
                 self.parse_local_position_data(data_obj)
+                
             elif data_obj.name == "vehicle_iden_status":
+                print("vehicle_iden_status")
                 self.parse_vehicle_iden_status(data_obj)
+                
             elif data_obj.name == "sensor_accel":
+                print("sensor_accel")
                 self.parse_sensor_accel(data_obj)
 
 
@@ -261,6 +283,13 @@ class PX4AircraftCase(GeneralAircraftCase):
             yaw_arr.append(euler[2])
 
         self.roll, self.pitch, self.yaw = self.resample_data(t, roll_arr, pitch_arr, yaw_arr)
+
+    def parse_attitude_data_sp(self, data):
+        # dict_keys(['timestamp', 'rollspeed', 'pitchspeed', 'yawspeed', 'q[0]', 'q[1]', 'q[2]', 'q[3]'])
+        t = data.data['timestamp'] / 1000000 - self.t_min
+        print(f"sample rate {len(t) / (t[-1] - t[0])}")
+        
+        self.roll_sp, self.pitch_sp, self.yaw_sp = self.resample_data(t, data.data["roll_body"], data.data["pitch_body"], data.data["yaw_body"])
 
     def parse_local_position_data(self, data: ULog.Data):
         # ['timestamp', 'ref_timestamp', 'ref_lat', 'ref_lon', 'surface_bottom_timestamp', 'x', 'y', 'z', 'delta_xy[0]',

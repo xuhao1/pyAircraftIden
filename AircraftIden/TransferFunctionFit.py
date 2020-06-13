@@ -12,6 +12,27 @@ import random
 from numpy import linalg as LA
 import numbers
 
+def process_status_freqres(freqres, i):
+    freq, H, gamma2, gxx, gxy, gyy = freqres.get_freq_iden(i)
+    a,b,c,d,tau,s = sp.symbols("a b c d tau s")
+    
+    num = d
+    den = (b *s + c)
+    tfpm = TransferFunctionParamModel(num,den,tau)
+    fitter = TransferFunctionFit(freq, H, gamma2, tfpm,nw=20,iter_times=1000,reg = 0)
+    tf = fitter.estimate(10,accept_J=30)
+    return fitter
+
+plt.rc('figure', figsize=(20.0, 10.0))
+def plot_fitter(fitter, status_name):
+    plt.figure(status_name)
+    plt.title(status_name)
+    fitter.plot(status_name+":")
+    trans_str = fitter.latex()
+    plt.text(10, 0.9,trans_str, fontsize=20,color='red')
+    plt.show()
+
+    
 def poly_latex(poly,cha = "s"):
     ret_str = ""
     ords = len(poly) - 1
@@ -25,6 +46,9 @@ def poly_latex(poly,cha = "s"):
             else:
                 ret_str = ret_str + "{:4.2f} s^{:d}+".format(poly[i],ordn)
     return ret_str
+
+def transfer_func_latex(num,den,tau):
+    return r"$\frac{" + poly_latex(num) + "}{" + poly_latex(den) +"}" + "e^{-" + "{:4.3f}".format(tau) + "t}$"
 
 class TransferFunctionModel(object):
     #TransferFunction Model, num and den is coefficent
@@ -70,7 +94,7 @@ class TransferFunctionModel(object):
         num = self.num
         den = self.den
         tau = self.tau
-        return r"$\frac{" + poly_latex(num) + "}{" + poly_latex(den) +"}" + "e^{-" + "{:4.3f}".format(tau) + "t}$"
+        return r"$\frac{" + poly_latex(num) + "}{" + poly_latex(den) +"}" + "e^{-" + "{:4.5f}".format(tau) + "t}$"
 
     
 
@@ -133,12 +157,12 @@ class TransferFunctionParamModel(object):
             return latex(self.num / self.den * sp.exp(-self.tau))
 
         frac_part = r"$\frac{" + latex(self.num.subs(sub)) + "}{" + latex(self.den.subs(sub)) + "}"
-        tau_part =  "" if self.tau == 0 else ("e^{-" + "{:4.3f}".format(self.tau.subs(sub)) + "t}$")
+        tau_part =  "" if self.tau == 0 else ("e^{-" + "{:4.6f}".format(self.tau.subs(sub)) + "t}$")
         return frac_part + tau_part
 
 class TransferFunctionFit(object):
     def __init__(self, freq, H, coheren, tfpm, nw=20,
-                 iter_times = 100,has_addition_integral = False,reg = 0.1):
+                 iter_times = 10,has_addition_integral = False,reg = 0.1):
         self.nw = nw
         self.source_freq = freq
         self.source_H = H
@@ -219,18 +243,22 @@ class TransferFunctionFit(object):
 
         omg_list = np.linspace(np.log(omg_min), np.log(omg_max), self.nw)
         omg_list = np.exp(omg_list)
-        # print("omg list {}".format(omg_list))
+#         print("omg list {}".format(omg_list))
 
         omg_ptr = 0
         self.est_omg_ptr_list = []
         for i in range(self.source_freq.__len__()):
             freq = self.source_freq[i]
+#             print(i, freq)
             if freq > omg_list[omg_ptr]:
                 self.est_omg_ptr_list.append(i)
                 omg_ptr = omg_ptr + 1
             elif omg_ptr < omg_list.__len__() and i == self.source_freq.__len__() - 1:
                 self.est_omg_ptr_list.append(i)
                 omg_ptr = omg_ptr + 1
+            
+            if omg_ptr >= len(omg_list):
+                break
 
 
     def estimate(self, omg_min=None, omg_max=None,accept_J=10):
@@ -283,7 +311,7 @@ class TransferFunctionFit(object):
         x0 = self.setup_initvals()
         bounds = [(None, None) for i in range(len(x0))]
         bounds[-1] = (0, 0.1)
-        ret = minimize(f, x0, options={'maxiter': 10000000, 'disp': False}, bounds=bounds, tol=1e-15)
+        ret = minimize(f, x0, options={'maxiter': 20, 'disp': False}, bounds=bounds, tol=1e-15)
         x = ret.x.copy()# / ret.x[self.den_max_ord_ptr]
         J = ret.fun
         return x, J

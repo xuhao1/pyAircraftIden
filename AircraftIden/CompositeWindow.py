@@ -9,6 +9,7 @@ from multiprocessing import Pool,cpu_count
 
 class CompositeWindow(object):
     def __init__(self, x_seq, y_seq, sample_rate, omg_min, omg_max, win_num_lists = None):
+        print(f"Setting-up composite win, sample rate {sample_rate} from omg {omg_min} to {omg_max}")
         self.sample_rate = sample_rate
         self.total_time = len(x_seq) /sample_rate
         self.time_seq = np.linspace(0, self.total_time, len(x_seq))
