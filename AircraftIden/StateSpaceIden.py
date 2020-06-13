@@ -9,11 +9,12 @@ import copy
 import multiprocessing
 from AircraftIden.StateSpaceParamModel import StateSpaceParamModel, StateSpaceModel
 import time
+import sys
 
 
 class StateSpaceIdenSIMO(object):
     def __init__(self, freqres, nw=20, enable_debug_plot=False, max_sample_times=20, accept_J=5,
-                 y_names=None, reg = 1.0):
+                 y_names=None, reg = 1.0, cpu_use = None, iter_callback = None):
         self.freq = freqres.freq
         self.Hs = freqres.Hs
         self.wg = 1.0
@@ -35,6 +36,10 @@ class StateSpaceIdenSIMO(object):
         self.reg = reg
 
         self.fig = None
+
+        self.cpu_use = cpu_use
+
+        self.iter_callback= iter_callback
     
     def print_res(self):
         assert self.x_best is not None, "You must estimate first"
@@ -47,20 +52,29 @@ class StateSpaceIdenSIMO(object):
         print("B")
         print(ssm.B)
         
-    def estimate(self, sspm: StateSpaceParamModel, syms, omg_min=None, omg_max=None, constant_defines=None):
+    def estimate(self, sspm: StateSpaceParamModel, syms, omg_min=None, omg_max=None, constant_defines=None, rand_init_max = 1):
         assert self.y_dims == sspm.y_dims, "StateSpaceModel dim : {} need to iden must have same dims with Hs {}".format(
             sspm.y_dims, self.y_dims)
+
         if constant_defines is None:
             constant_defines = dict()
         self.init_omg_list(omg_min, omg_max)
+        self.rand_init_max = rand_init_max
 
         self.syms = syms
         sspm.load_constant_defines(constant_defines)
         self.x_syms = list(sspm.get_new_params())
         self.x_dims = len(self.x_syms)
+        assert self.x_dims == len(self.syms), "Every unknown param must be provide in syms!"
         print("Will estimate num {} {}".format(self.x_syms.__len__(), self.x_syms))
 
-        J, x = self.parallel_solve(sspm)
+
+        if self.max_sample_times > 1:
+            J, x = self.parallel_solve(sspm)
+        else:
+            self.sspm = sspm
+            J, x = self.solve(0)
+
         x_syms = sspm.solve_params_from_newparams(x)
         # print("J : {} syms {}".format(J, x_syms))
 
@@ -75,9 +89,17 @@ class StateSpaceIdenSIMO(object):
 
     def parallel_solve(self, sspm):
         self.sspm = sspm
-        cpu_use = multiprocessing.cpu_count() - 1
+        if self.cpu_use is None:
+            cpu_use = multiprocessing.cpu_count() - 1
+        else:
+            cpu_use = self.cpu_use
+
         if cpu_use < 1:
             cpu_use = 1
+
+        if cpu_use > self.max_sample_times:
+            cpu_use = self.max_sample_times
+
         pool = multiprocessing.Pool(cpu_use)
         # result = pool.map_async(self.solve, range(self.max_sample_times))
         results = []
@@ -103,11 +125,7 @@ class StateSpaceIdenSIMO(object):
 
                         if self.enable_debug_plot:
                             pass
-                            #print("Will Print,sleep 5")
-                            #self.draw_freq_res()
-                            #plt.show()
-                            #time.sleep(5)
-                            
+
                     if J < self.accept_J:
                         # print("Terminate pool")
                         pool.terminate()
@@ -122,18 +140,26 @@ class StateSpaceIdenSIMO(object):
         # print("Using J {} x {}".format(self.J_min, self.x_best))
         return self.J_min, self.x_best
 
+    def solve_callback(self, x, x_state):
+        print(x)
+        print(x_state)
+        sys.stdout.flush()
+
     def solve(self, id=0):
+        print("Solve id {}".format(id))
+
         sspm = copy.deepcopy(self.sspm)
-        # print("Solve id {}".format(id))
         f = lambda x: self.cost_func(sspm, x)
         x0 = self.setup_initvals(sspm)
-        # return x0, 0
         con = {'type': 'ineq', 'fun': lambda x: self.constrain_func(sspm,x)}
-        opts = {'maxiter':1000000}
+        opts = {'maxiter':10000}
+
+        print("{} using init {}".format(id, x0))
+        sys.stdout.flush()
+
         ret = minimize(f, x0,constraints=con,options=opts)
         x = ret.x.copy()
         J = ret.fun
-        # print("exit id {} J:{}".format(id, J))
         return J, x
 
     def cost_func(self, sspm: StateSpaceParamModel, x):
@@ -154,10 +180,9 @@ class StateSpaceIdenSIMO(object):
                 h_amp = 20 * np.log10(np.absolute(h))
                 h_pha = np.arctan2(h.imag, h.real) * 180 / math.pi
                 pha_err = h_pha - pha
-                if pha_err > 180:
-                    pha_err = pha_err - 360
-                if pha_err < -180:
-                    pha_err = pha_err + 360
+
+                pha_err = (pha_err + 180) % 360 - 180
+
                 J = self.wg * pow(h_amp - amp, 2) + self.wp * pow(pha_err, 2)
 
                 gama2 = self.coherens[y_index][omg_ptr]
@@ -255,18 +280,17 @@ class StateSpaceIdenSIMO(object):
             ax1.legend(lines, [l.get_label() for l in lines])
 
     def setup_initvals(self, sspm):
+        print("Start setup init")
         source_syms = sspm.syms
         source_syms_dims = sspm.syms.__len__()
-        source_syms_init_vals = np.random.rand(source_syms_dims) * 2 - 1
+        source_syms_init_vals = (np.random.rand(source_syms_dims) * 2 - 1) * self.rand_init_max
         subs = dict(zip(source_syms, source_syms_init_vals))
 
         x0 = np.zeros(self.x_dims)
         for i in range(self.x_dims):
             sym = self.x_syms[i]
-            # Eval sym value from sspm
             sym_def = sspm.new_params_raw_defines[sym]
             v = sym_def.evalf(subs=subs)
-            # print("new sym {} symdef {} vinit {}".format(sym, sym_def, v))
             x0[i] = v
         return x0
 
