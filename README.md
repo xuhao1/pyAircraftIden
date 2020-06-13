@@ -41,8 +41,55 @@ Also [Tail-sitter example](./examples/TSCruisingFreqResQFitting.ipynb) gives a m
 
 ## State-space Idenification
 This project uses frequency approach for state-space identification.
-Check [State Space example](./examples/TSCruisingSSM.ipynb) for details
 
+
+```python
+th0 = trims["theta"]
+
+# Set unknown parameters
+Xu, Xw, Xq = sp.symbols('Xu Xw Xq')
+Zu, Zw, Zq = sp.symbols('Zu Zw Zq')
+Mu, Mw, Mq = sp.symbols('Mu Mw Mq')
+
+#Set state space formula
+#AX' = FX + GU
+#y = H0 X+ H1 X'
+F = sp.Matrix([[Xu, Xw, -g * math.cos(th0)],
+            [Zu, Zw, -g * math.sin(th0)],
+            [0, 0, 0]])
+
+G = sp.Matrix([[Xq],[Zq],[1]])
+# direct using -u w q for y
+#U equal to negative u
+H0 = sp.Matrix([
+    [-1, 0, 0],
+    [0, 1, 0]])
+H1 = sp.Matrix([
+    [0, 0, 0],
+    [0, 0, 0],
+])
+syms = [Xu, Xw,Zu, Zw,Xq,Zq]
+
+#Set state space Model with unknow parameters
+LatdynSSPM = StateSpaceParamModel(M, F, G, H0, H1, syms)
+
+#Act frequency idenification first
+freqres = freqres_10ms.get_freqres(indexs = [1,0])
+
+#Act State space idenification
+ssm_iden = StateSpaceIdenSIMO(freqres, accept_J=150,
+                            enable_debug_plot=False,
+                            y_names=['U',"w"],reg=0.0 )
+J, ssm = ssm_iden.estimate(LatdynSSPM, syms, constant_defines={})
+# Check stable
+ssm.check_stable()
+#Draw and print
+ssm_iden.draw_freq_res()
+ssm_iden.print_res()
+```
+
+Check [State Space example](./examples/TSCruisingSSM.ipynb) for details
+![Tail-sitter State-space Model](plots/ts_ssm.PNG)
 ## PX4 ULog data parsing
 PX4 records ULog data, read PX4 data is easy with this project
 
@@ -67,7 +114,9 @@ Cessna example:
 Tail-sitter example:
 [Tail-sitter example](./examples/TSCruisingFreqResQFitting.ipynb)
 
-[State Space example](./examples/TSCruisingSSM.ipynb)
+[Tail-sitter pitch example](./examples/TSCruisingFreqResPitch.ipynb)
+
+[State Space example](./examples/TSCruisingSSM.ipynb): this require [Tail-sitter example](./examples/TSCruisingFreqResPitch.ipynb) first.
 
 ## Reference
 Please Check 
