@@ -11,7 +11,11 @@ simo_iden.plt_bode_plot(0)
 time_seq_source is the time series, a_seq is your input data, data1_seq, data2_seq ..., is your output data
 omega_min, omega_max is your min and max angular frequency.
 
-Also, please take a look at 
+![frequency response example](plots/ele_q_cessna.png)
+
+Also, please take a look at [SIMO example](./examples/FreqIdenExample.ipynb)
+
+## Transfer Function Idenification
 
 ## License
 This project uses MIT license, if you feel happy with my project, you can 请我吃烤肉.
