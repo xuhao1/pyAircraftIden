@@ -2,7 +2,7 @@
 This project stand for system identification for aircraft or other system.
 
 Workflow
-![frequency response example](workflow.PNG)
+![frequency response example](plots/workflow.PNG)
 
 
 ## Single-input Multi Output Frequency
