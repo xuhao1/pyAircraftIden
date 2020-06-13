@@ -23,7 +23,7 @@ def time_seq_preprocess(time_seq, *x_seqs, enable_resample=True, remove_drift_an
         tnew = np.linspace(time_seq[0], time_seq[-1], num=len(time_seq), endpoint=True)
 
     sample_rate = len(time_seq) / (time_seq[-1] - time_seq[0])
-    print("Sample rate is {0}".format(sample_rate))
+    print("Sample rate is {0:3.1f}hz".format(sample_rate))
     resampled_datas = [tnew]
     for x_seq in x_seqs:
         assert len(x_seq) == len(tnew), "Length of data seq must be euqal to time seq"
@@ -67,17 +67,20 @@ class FreqIdenSIMO:
         else:
             self.using_composite = False
 
-        if self.using_composite:
-            self.composes = [CompositeWindow(self.x_seq, y_seq, self.sample_rate, omg_min, omg_max)
-                             for y_seq in self.y_seqs]
-        else:
-            datas = copy.deepcopy(self.y_seqs)
-            if self.enable_assit_input:
-                datas.append(self.x2_seq)
-            datas.append(self.x_seq.copy())
-            print("Start calc spectrum for data: totalTime{} sample rate {}".format(self.time_len, self.sample_rate))
+        try:
+            if self.using_composite:
+                self.composes = [CompositeWindow(self.x_seq, y_seq, self.sample_rate, omg_min, omg_max)
+                                for y_seq in self.y_seqs]
+            else:
+                datas = copy.deepcopy(self.y_seqs)
+                if self.enable_assit_input:
+                    datas.append(self.x2_seq)
+                datas.append(self.x_seq.copy())
+                print("Start calc spectrum for data: totalTime{} sample rate {}".format(self.time_len, self.sample_rate))
 
-            self.spectrumAnal = MultiSignalSpectrum(self.sample_rate, omg_min, omg_max, datas, win_num)
+                self.spectrumAnal = MultiSignalSpectrum(self.sample_rate, omg_min, omg_max, datas, win_num)
+        except KeyboardInterrupt:
+            raise
 
     def get_cross_coherence(self, index1, index2):
         # Get cross coherence only works when there is a assit input

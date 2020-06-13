@@ -267,7 +267,9 @@ class TransferFunctionFit(object):
         J_min_max = 1000000
         J_min = J_min_max
 
-        cpu_use = multiprocessing.cpu_count()
+        cpu_use = multiprocessing.cpu_count() - 1
+        if cpu_use < 2:
+            cpu_use = 2
         pool = multiprocessing.Pool(cpu_use)
 
         results = []
@@ -277,30 +279,36 @@ class TransferFunctionFit(object):
 
         should_exit_pool = False
         print("Starting Estimate",end="")
-        while not should_exit_pool:
-            if results.__len__() == 0:
-                print("All in pool finish")
-                break
-            for i in range(results.__len__()):
-                thr = results[i]
-                if thr.ready() and thr.successful():
-                    x_tmp,J  = thr.get()
-                    if J < J_min:
-                        J_min = J
-                        self.x = x_tmp
-                        self.setup_transferfunc(x_tmp)
-                        print("\r",end="")
-                        print("Found new better {}".format(J), end="")
-
-                    if J < accept_J:
-                        print("")
-                        pool.terminate()
-                        return self.tf
-
-                    del results[i]
+        try:
+            while not should_exit_pool:
+                if results.__len__() == 0:
+                    print("All in pool finish")
                     break
-            time.sleep(0.01)
-        pool.terminate()
+                for i in range(results.__len__()):
+                    thr = results[i]
+                    if thr.ready() and thr.successful():
+                        x_tmp,J  = thr.get()
+                        if J < J_min:
+                            J_min = J
+                            self.x = x_tmp
+                            self.setup_transferfunc(x_tmp)
+                            print("\r",end="")
+                            print("Found new better {}".format(J), end="")
+
+                        if J < accept_J:
+                            print("")
+                            pool.terminate()
+                            return self.tf
+
+                        del results[i]
+                        break
+                time.sleep(0.01)
+            pool.terminate()
+        except KeyboardInterrupt:
+            print("KeyboardInterrupt, exit thread pools")
+            pool.terminate()
+            pool.join()
+            raise
         return self.tf
 
     def setup_transferfunc(self, x):

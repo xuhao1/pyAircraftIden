@@ -9,7 +9,7 @@ from multiprocessing import Pool,cpu_count
 
 class CompositeWindow(object):
     def __init__(self, x_seq, y_seq, sample_rate, omg_min, omg_max, win_num_lists = None):
-        print(f"Setting-up composite win, sample rate {sample_rate} from omg {omg_min} to {omg_max}")
+        print(f"Setting-up composite win, sample rate {sample_rate} from angluar frequency {omg_min}rad/s to {omg_max}rad/s")
         self.sample_rate = sample_rate
         self.total_time = len(x_seq) /sample_rate
         self.time_seq = np.linspace(0, self.total_time, len(x_seq))
@@ -110,15 +110,21 @@ class CompositeWindow(object):
 
         #         print("Process to ptr {}/{} freq {} rad/s".format(freq_ptr, self.freq.__len__(), self.freq[freq_ptr]))
         cpu_use = cpu_count() - 1
-        if cpu_use < 1:
-            cpu_use = 1
+        if cpu_use < 2:
+            cpu_use = 2
         pool = Pool(cpu_use)
-        ret = pool.map(self.process_freq, range(self.freq.__len__()))
-        for gxx_ci, gyy_ci, gxy_ci in ret:
-            gxx_c.append(gxx_ci.copy())
-            gyy_c.append(gyy_ci.copy())
-            gxy_c.append(gxy_ci.copy())
-        pool.terminate()
+        try:
+            ret = pool.map(self.process_freq, range(self.freq.__len__()))
+            for gxx_ci, gyy_ci, gxy_ci in ret:
+                gxx_c.append(gxx_ci.copy())
+                gyy_c.append(gyy_ci.copy())
+                gxy_c.append(gxy_ci.copy())
+            pool.terminate()
+        except KeyboardInterrupt:
+            print("KeyboardInterrupt; exit thread pools...")
+            pool.terminate()
+            pool.join()
+            raise
 
         gxx_c = np.array(gxx_c)
         gxy_c = np.array(gxy_c)
