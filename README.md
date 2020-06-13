@@ -1,6 +1,10 @@
 # pyAircraftIden
 This project stand for system identification for aircraft or other system.
 
+Workflow
+![frequency response example](workflow.PNG)
+
+
 ## Single-input Multi Output Frequency
 For frequency identification
 
@@ -121,8 +125,11 @@ Tail-sitter example:
 [State Space example](./examples/TSCruisingSSM.ipynb): this require [Tail-sitter example](./examples/TSCruisingFreqResPitch.ipynb) output frequency response results first.
 
 ## Reference
+
+You can found more algorithms details in this [slides](./AircraftIdentification.pdf).
+
 Please Check 
-**Remple, Robert K., and Mark B. Tischler.Aircraft and rotorcraft system identification: engineering methods with flight-test examples. American Institute of Aeronautics and Astronautics, 2006.** for algorithm details.
+**Remple, Robert K., and Mark B. Tischler.Aircraft and rotorcraft system identification: engineering methods with flight-test examples. American Institute of Aeronautics and Astronautics, 2006.** for aircraft identification algorithm details.
 
 ## License
 This project uses MIT license
