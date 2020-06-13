@@ -88,8 +88,10 @@ ssm_iden.draw_freq_res()
 ssm_iden.print_res()
 ```
 
-Check [State Space example](./examples/TSCruisingSSM.ipynb) for details
+[State Space example](./examples/TSCruisingSSM.ipynb) gives an example for the state-space model of longitudinal dynamics of a tail-sitter VTOL, please check  for details.
+
 ![Tail-sitter State-space Model](plots/ts_ssm.PNG)
+
 ## PX4 ULog data parsing
 PX4 records ULog data, read PX4 data is easy with this project
 
@@ -116,7 +118,7 @@ Tail-sitter example:
 
 [Tail-sitter pitch example](./examples/TSCruisingFreqResPitch.ipynb)
 
-[State Space example](./examples/TSCruisingSSM.ipynb): this require [Tail-sitter example](./examples/TSCruisingFreqResPitch.ipynb) first.
+[State Space example](./examples/TSCruisingSSM.ipynb): this require [Tail-sitter example](./examples/TSCruisingFreqResPitch.ipynb) output frequency response results first.
 
 ## Reference
 Please Check 
