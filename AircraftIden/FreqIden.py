@@ -148,8 +148,13 @@ class FreqIdenSIMO:
             Hs.append(h)
             coheres.append(co)
         return FreqResponse(freq, Hs, coheres,self.trims)
+    
+    def save_to_csv(self, index, path):
+        freq, H, gamma2, gxx, gxy, gyy = self.get_freq_iden(index)
+        exdata = np.array([freq, np.real(H), np.imag(H)]).transpose()
+        np.savetxt(path, exdata, delimiter=",")
 
-    def plt_bode_plot(self, index=0, label=""):
+    def plt_bode_plot(self, index=0, label="", xmin=None, xmax=None):
         # f, ax = plt.subplots()
         
         
@@ -159,28 +164,33 @@ class FreqIdenSIMO:
         ax1.semilogx(freq, 20 * np.log10(gxx), label=label+'gxx')
         ax1.semilogx(freq, 20 * np.log10(gyy), label=label+'gyy')
         ax1.semilogx(freq, 20 * np.log10(np.absolute(gxy)), label=label+'gxy')
-        ax1.title("Gxx & Gyy Tilde of ele and theta")
+        ax1.set_title("Gxx & Gyy Tilde of ele and theta")
         ax1.legend()
         ax1.grid(which='both')
 
         ax2 = plt.subplot(412)
         ax2.semilogx(freq, h_amp, label=label)
-        ax2.title("H Amp")
+        ax2.set_title("H Amp")
         ax2.legend()
         ax2.grid(which='both')
+        ax2 = plt.gca()
+        ax2.set_xlim([xmin,xmax])
+        # ax2.set_ylim([-10,10])
 
         ax3 = plt.subplot(413)
         ax3.semilogx(freq, h_phase, label=label)
-        ax3.title("H Phase")
+        ax3.set_title("H Phase")
         ax3.legend()
         ax3.grid(which='both')
+        ax3.set_xlim([xmin,xmax])
+        # ax3.set_ylim([ -30, 30])
 
         ax4 = plt.subplot(414)
         ax4.semilogx(freq, gamma2, label=label+"coherence")
         if self.enable_assit_input:
             ax4.semilogx(freq, self.get_cross_coherence(-1, -2), label='coherece of x and assit input')
         ax4.legend()
-        ax4.title("gamma2")
+        ax4.set_title("gamma2")
         ax4.grid(which='both')
 
 
