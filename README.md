@@ -1,7 +1,6 @@
 # pyAircraftIden
 This project stand for system identification for aircraft or other system.
 
-Workflow
 ![frequency response example](plots/workflow.PNG)
 
 
