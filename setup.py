@@ -10,10 +10,7 @@ setup(
     url="https://www.xuhao1.me/open-source/", 
 
     # 你要安装的包，通过 setuptools.find_packages 找到当前目录下有哪些包
-    packages=find_packages(),
+    packages=find_packages(exclude=("data",)),
         install_requires=['scipy', "numpy", "matplotlib", "control", "sympy"],
-    exclude_package_data={
-        "data"
-    }
 
 )
