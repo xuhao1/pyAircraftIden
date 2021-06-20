@@ -319,7 +319,7 @@ class TransferFunctionFit(object):
         x0 = self.setup_initvals()
         bounds = [(None, None) for i in range(len(x0))]
         bounds[-1] = (0, 0.1)
-        ret = minimize(f, x0, options={'maxiter': 20, 'disp': False}, bounds=bounds, tol=1e-15)
+        ret = minimize(f, x0, options={'maxiter': 100, 'disp': False}, bounds=bounds, tol=1e-15)
         x = ret.x.copy()# / ret.x[self.den_max_ord_ptr]
         J = ret.fun
         return x, J
