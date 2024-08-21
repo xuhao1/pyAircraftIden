@@ -4,7 +4,7 @@ from scipy.interpolate import interp1d
 import math
 from AircraftIden.SpectrumAnalyse import MultiSignalSpectrum
 from scipy.optimize import minimize
-from multiprocessing import Pool,cpu_count
+#from multiprocessing import Pool,cpu_count
 
 
 class CompositeWindow(object):
@@ -109,23 +109,12 @@ class CompositeWindow(object):
         self.cohereni = [self.get_inteploated_source_coherence(i) for i in range(self.win_slice_num)]
 
         #         print("Process to ptr {}/{} freq {} rad/s".format(freq_ptr, self.freq.__len__(), self.freq[freq_ptr]))
-        cpu_use = cpu_count() - 1
-        if cpu_use < 2:
-            cpu_use = 2
-        pool = Pool(cpu_use)
-        try:
-            ret = pool.map(self.process_freq, range(self.freq.__len__()))
+        for i in range(self.freq.__len__()):
+            ret = [self.process_freq(i)]
             for gxx_ci, gyy_ci, gxy_ci in ret:
                 gxx_c.append(gxx_ci.copy())
                 gyy_c.append(gyy_ci.copy())
                 gxy_c.append(gxy_ci.copy())
-            pool.terminate()
-        except KeyboardInterrupt:
-            print("KeyboardInterrupt; exit thread pools...")
-            pool.terminate()
-            pool.join()
-            raise
-
         gxx_c = np.array(gxx_c)
         gxy_c = np.array(gxy_c)
         gyy_c = np.array(gyy_c)

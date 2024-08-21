@@ -156,6 +156,12 @@ class FreqIdenSIMO:
         freq, H, gamma2, gxx, gxy, gyy = self.get_freq_iden(index)
         exdata = np.array([freq, np.real(H), np.imag(H)]).transpose()
         np.savetxt(path, exdata, delimiter=",")
+    
+    def return_plotting_data(self):
+        freq, H, gamma2, gxx, gxy, gyy = self.get_freq_iden(0)
+        h_amp, h_phase = FreqIdenSIMO.get_amp_pha_from_h(H)
+        return freq, h_amp, h_phase, gamma2, gxx, gxy, gyy, H
+
 
     def plt_bode_plot(self, index=0, label="", xmin=None, xmax=None):
         # f, ax = plt.subplots()
